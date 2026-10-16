@@ -1,0 +1,225 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --fondo: #f6f3ee;
+  --papel: #ffffff;
+  --tinta: #1f1c18;
+  --suave: #6d665c;
+  --linea: #e4ddd2;
+  --oro: #a77a1c;
+  --oro-claro: #f4ead3;
+  --verde: #2f6b45;
+  --verde-claro: #e3f0e6;
+  --rojo: #a33a2c;
+  --rojo-claro: #f7e2de;
+  --azul: #2d5a87;
+  --azul-claro: #e2ecf6;
+  --violeta: #6a4a8c;
+  --violeta-claro: #ece4f4;
+  --radio: 10px;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 15px;
+  background: var(--fondo);
+  color: var(--tinta);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--oro); }
+h1, h2, h3, .marca { font-family: Fraunces, Georgia, serif; font-weight: 650; }
+h1 { font-size: 1.7rem; margin: 0 0 1rem; }
+h2 { font-size: 1.2rem; margin: 1.5rem 0 .7rem; }
+h3 { font-size: 1rem; margin: 1.2rem 0 .5rem; }
+
+.marca { font-size: 1.2rem; letter-spacing: .01em; white-space: nowrap; }
+.marca span { color: var(--oro); padding: 0 .1em; }
+.marca.grande { font-size: 1.8rem; text-align: center; margin-bottom: .5rem; }
+
+/* Barra */
+.barra {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: .7rem 1.5rem;
+  background: var(--tinta); color: #fff;
+}
+.barra nav { display: flex; gap: .2rem; flex: 1; align-items: center; }
+.barra nav a {
+  color: #d9d2c5; text-decoration: none; padding: .45rem .75rem; border-radius: 7px; font-weight: 500;
+}
+.barra nav a:hover { color: #fff; background: #ffffff14; }
+.barra nav a.activo { color: var(--tinta); background: var(--oro-claro); }
+.salir { margin-left: auto; background: none; border: 1px solid #ffffff40; color: #d9d2c5; border-radius: 7px; padding: .4rem .8rem; cursor: pointer; font: inherit; }
+.hamburguesa { display: none; margin-left: auto; background: none; border: 0; color: #fff; font-size: 1.5rem; cursor: pointer; }
+
+main { max-width: 1150px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem; }
+
+/* Tarjetas y formularios */
+.card { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 1rem 1.1rem; }
+.form { display: flex; flex-direction: column; gap: 1rem; max-width: 720px; }
+label { display: flex; flex-direction: column; gap: .3rem; font-weight: 500; font-size: .9rem; }
+input, select, textarea {
+  font: inherit; font-weight: 400; color: var(--tinta);
+  padding: .55rem .65rem; border: 1px solid #cfc6b8; border-radius: 8px; background: #fff;
+  min-width: 0;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--oro); outline-offset: 0; border-color: var(--oro); }
+input[type=checkbox], input[type=radio] { width: 1.05rem; height: 1.05rem; accent-color: var(--oro); }
+fieldset { border: 0; padding: 0; margin: 0; }
+legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
+.fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grilla6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; }
+.opciones { display: flex; flex-wrap: wrap; gap: .5rem; }
+.opcion {
+  flex-direction: row; align-items: center; gap: .5rem;
+  padding: .55rem .9rem; border: 1px solid #cfc6b8; border-radius: 999px; cursor: pointer; background: #fff;
+}
+.opcion.sel { border-color: var(--oro); background: var(--oro-claro); }
+.opcion input { margin: 0; }
+.ayuda { color: var(--suave); font-size: .85rem; margin: .3rem 0; font-weight: 400; }
+.mini-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.mini-form input { flex: 1 1 140px; }
+
+.btn {
+  font: inherit; font-weight: 600; cursor: pointer;
+  padding: .55rem 1rem; border-radius: 8px; border: 1px solid #cfc6b8; background: #fff; color: var(--tinta);
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--tinta); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.primario { background: var(--tinta); border-color: var(--tinta); color: #fff; }
+.btn.primario:hover { background: #3a342c; }
+.btn.ok { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn.peligro { background: #fff; border-color: var(--rojo); color: var(--rojo); }
+.btn.suave { background: transparent; border-color: var(--linea); color: var(--suave); font-weight: 500; }
+.btn.grande { padding: .8rem 1.6rem; font-size: 1.05rem; margin-top: 1rem; }
+.btn.archivo { display: inline-block; text-align: center; align-self: flex-start; flex-direction: row; }
+.btn-link { background: none; border: 0; color: var(--rojo); font-size: 1.2rem; cursor: pointer; }
+
+.error { background: var(--rojo-claro); color: var(--rojo); padding: .6rem .8rem; border-radius: 8px; margin: .6rem 0; }
+.ok { background: var(--verde-claro); color: var(--verde); padding: .6rem .8rem; border-radius: 8px; margin: .6rem 0; }
+.aviso { background: var(--oro-claro); padding: .6rem .8rem; border-radius: 8px; margin-bottom: 1rem; }
+.vacio { color: var(--suave); padding: 2rem 0; text-align: center; }
+.cargando { padding: 3rem; text-align: center; color: var(--suave); }
+.meta { color: var(--suave); font-size: .85rem; }
+.foto-prev { max-width: 220px; border-radius: 8px; border: 1px solid var(--linea); }
+
+/* Pestañas y filtros */
+.pestanas { display: flex; gap: .3rem; overflow-x: auto; border-bottom: 1px solid var(--linea); margin-bottom: 1rem; }
+.pestanas a {
+  text-decoration: none; color: var(--suave); padding: .6rem .9rem; font-weight: 500; white-space: nowrap;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.pestanas a.activo { color: var(--tinta); border-color: var(--oro); }
+.contador { display: inline-block; margin-left: .4rem; background: var(--oro-claro); color: var(--oro); border-radius: 999px; padding: 0 .45rem; font-size: .78rem; font-weight: 600; }
+.filtros { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; margin-bottom: 1rem; }
+.filtros > input { flex: 1 1 260px; }
+
+/* Sobres */
+.lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: .9rem; }
+.sobre { display: flex; flex-direction: column; gap: .5rem; border-left: 4px solid var(--linea); }
+.sobre-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; cursor: pointer; }
+.sobre-cuerpo { cursor: pointer; display: flex; flex-direction: column; gap: .25rem; }
+.nro { font-family: Fraunces, Georgia, serif; font-weight: 650; font-size: 1.15rem; }
+.cliente { font-weight: 500; }
+.desc { white-space: pre-wrap; }
+.acciones { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; border-top: 1px dashed var(--linea); padding-top: .6rem; margin-top: auto; }
+.acciones .mini-form { margin: 0; width: 100%; }
+.acciones .mini-form input { flex: 1 1 90px; }
+
+.chip { font-size: .75rem; font-weight: 600; padding: .2rem .55rem; border-radius: 999px; white-space: nowrap; background: #eee; }
+.chip.est-presupuesto, .sobre.est-presupuesto { --c: var(--azul); --cc: var(--azul-claro); }
+.chip.est-esperando_confirmacion, .sobre.est-esperando_confirmacion { --c: var(--violeta); --cc: var(--violeta-claro); }
+.chip.est-taller, .sobre.est-taller { --c: var(--oro); --cc: var(--oro-claro); }
+.chip.est-listo_para_facturar, .sobre.est-listo_para_facturar { --c: var(--verde); --cc: var(--verde-claro); }
+.chip.est-facturado, .sobre.est-facturado { --c: #3d3a36; --cc: #e8e5e0; }
+.chip.est-rechazado, .sobre.est-rechazado { --c: var(--rojo); --cc: var(--rojo-claro); }
+.chip.est-entregado, .sobre.est-entregado { --c: #8a8379; --cc: #efece7; }
+.chip { color: var(--c); background: var(--cc); }
+.sobre { border-left-color: var(--c); }
+
+/* Modal */
+.modal-fondo { position: fixed; inset: 0; background: #1f1c1899; display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; z-index: 20; overflow-y: auto; }
+.modal { width: 100%; max-width: 560px; position: relative; display: flex; flex-direction: column; gap: .7rem; }
+.modal h2 { margin: 0; }
+.cerrar { position: absolute; top: .4rem; right: .6rem; background: none; border: 0; font-size: 1.8rem; cursor: pointer; color: var(--suave); }
+.foto-grande { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 8px; background: #f1ede6; }
+.sin-foto { padding: 2rem; text-align: center; background: #f1ede6; border-radius: 8px; color: var(--suave); }
+
+/* Tablas */
+.tabla-scroll { overflow-x: auto; }
+.tabla { width: 100%; border-collapse: collapse; background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); }
+.tabla th { text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); font-weight: 600; padding: .6rem .7rem; border-bottom: 1px solid var(--linea); background: #faf8f4; }
+.tabla td { padding: .55rem .7rem; border-bottom: 1px solid #efe9df; vertical-align: top; }
+.tabla tfoot td { font-weight: 600; border-top: 2px solid var(--tinta); border-bottom: 0; background: #faf8f4; }
+.tabla .d { text-align: right; font-variant-numeric: tabular-nums; }
+.tabla tr.clic { cursor: pointer; }
+.tabla tr.clic:hover td { background: #fbf7ee; }
+.tabla tr.apagada td { opacity: .45; }
+.tabla.compacta td { padding: .3rem .5rem; font-size: .88rem; }
+.negativo { color: var(--verde); }
+.factura input.num { width: 7rem; text-align: right; }
+.factura td.fino { font-weight: 600; color: var(--oro); white-space: nowrap; }
+
+.totales { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1rem; }
+.totales div, .saldo { display: flex; flex-direction: column; }
+.totales span, .saldo span { font-size: .78rem; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+.totales b { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+
+.saldos { display: grid; grid-template-columns: repeat(6, 1fr); gap: .6rem; margin: 1rem 0 .3rem; }
+.saldo { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: .7rem .8rem; }
+.saldo b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.titulo-cliente { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.titulo-cliente h1 { margin: 0; }
+.titulo-cliente > div { display: flex; gap: .5rem; }
+.volver { display: inline-block; margin-bottom: 1rem; text-decoration: none; }
+
+.hoja-cab { display: none; }
+
+/* Login */
+.login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.login-card { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 1rem; padding: 2rem; }
+
+/* Celular */
+@media (max-width: 760px) {
+  main { padding: 1rem 1rem 4rem; }
+  .barra { padding: .6rem 1rem; flex-wrap: wrap; }
+  .hamburguesa { display: block; }
+  .barra nav { display: none; flex-direction: column; align-items: stretch; width: 100%; flex-basis: 100%; }
+  .barra nav.abierto { display: flex; }
+  .salir { margin: .3rem 0 0; }
+  .fila2 { grid-template-columns: 1fr; }
+  .grilla6, .saldos { grid-template-columns: repeat(2, 1fr); }
+  .lista { grid-template-columns: 1fr; }
+
+  /* Facturación en tarjetas */
+  .factura thead { display: none; }
+  .factura, .factura tbody, .factura tr, .factura td { display: block; width: 100%; }
+  .factura tr { border-bottom: 2px solid var(--linea); padding: .5rem 0; }
+  .factura td { border: 0; display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .3rem .7rem; }
+  .factura td[data-l]::before { content: attr(data-l); font-size: .8rem; color: var(--suave); }
+  .factura td:first-child { justify-content: flex-start; }
+  .factura td > div.meta { display: none; }
+}
+
+/* Impresión */
+@media print {
+  @page { size: A4; margin: 14mm; }
+  body { background: #fff; font-size: 11pt; }
+  .no-print, .barra, .pestanas, .filtros, .volver { display: none !important; }
+  main { padding: 0; max-width: none; }
+  .hoja-cab { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #000; padding-bottom: 6pt; margin-bottom: 10pt; }
+  .tabla { border: 0; }
+  .tabla th { background: none; color: #000; border-bottom: 1.5pt solid #000; }
+  .tabla td { border-bottom: .5pt solid #bbb; }
+  .tabla tfoot td { background: none; border-top: 1.5pt solid #000; }
+  .tabla-scroll { overflow: visible; }
+  .saldos { grid-template-columns: repeat(6, 1fr); }
+  .saldo { border: 1pt solid #999; }
+  .negativo { color: #000; }
+  a { color: inherit; text-decoration: none; }
+  tr { break-inside: avoid; }
+}
