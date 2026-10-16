@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { sb, TIPOS, cargarListas, errorMsg, ir } from '../lib'
+import { sb, TIPOS, cargarListas, errorMsg, ir, num, resolverTallerista } from '../lib'
 import { subirFoto } from '../foto'
+import { CampoTallerista, CamposPresupuesto } from '../components'
+
+const presVacio = { hechura: '', moneda: 'ARS', metal: 'oro', peso: '' }
 
 export default function Ingreso() {
   const [listas, setListas] = useState({ clientes: [], talleristas: [] })
@@ -9,6 +12,7 @@ export default function Ingreso() {
   const [tipo, setTipo] = useState('taller')
   const [desc, setDesc] = useState('')
   const [tallerista, setTallerista] = useState('')
+  const [pres, setPres] = useState(presVacio)
   const [foto, setFoto] = useState(null)
   const [preview, setPreview] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -28,6 +32,16 @@ export default function Ingreso() {
     setMsg(null)
     const nombre = cliente.trim()
     if (!nombre) return setMsg({ error: 'Elegí o escribí el cliente.' })
+
+    let campos = {}
+    if (tipo === 'presupuesto') {
+      const h = num(pres.hechura)
+      const p = num(pres.peso)
+      if (h === null || Number.isNaN(h)) return setMsg({ error: 'Cargá la hechura del presupuesto.' })
+      if (Number.isNaN(p)) return setMsg({ error: 'El peso no es un número válido.' })
+      campos = { presupuesto_hechura: h, presupuesto_moneda: pres.moneda, presupuesto_metal: pres.metal, presupuesto_peso: p }
+    }
+
     setGuardando(true)
     try {
       let c = listas.clientes.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase())
@@ -40,15 +54,17 @@ export default function Ingreso() {
         if (error) throw error
         c = data
       }
+      const tallId = await resolverTallerista(tallerista, listas.talleristas)
       const { data: t, error } = await sb
         .from('trabajos')
         .insert({
           nro_sobre: sobre.trim(),
           cliente_id: c.id,
           tipo,
-          estado: tipo === 'presupuesto' ? 'presupuesto' : 'taller',
+          estado: tipo === 'presupuesto' ? 'esperando_confirmacion' : 'taller',
           descripcion: desc.trim() || null,
-          tallerista_id: tipo !== 'presupuesto' && tallerista ? Number(tallerista) : null,
+          tallerista_id: tallId,
+          ...campos,
         })
         .select('id,nro_sobre')
         .single()
@@ -59,7 +75,7 @@ export default function Ingreso() {
         }
       }
       setMsg((m) => m || { ok: `Sobre ${t.nro_sobre} ingresado para ${c.nombre}.` })
-      setSobre(''); setCliente(''); setDesc(''); setTallerista(''); setFoto(null); setPreview(null)
+      setSobre(''); setCliente(''); setDesc(''); setTallerista(''); setPres(presVacio); setFoto(null); setPreview(null)
       if (fileRef.current) fileRef.current.value = ''
       cargarListas().then(setListas)
     } catch (e) {
@@ -94,26 +110,19 @@ export default function Ingreso() {
               </label>
             ))}
           </div>
-          <p className="ayuda">
-            {tipo === 'presupuesto' && 'El cliente quiere un presupuesto antes de confirmar el trabajo.'}
-            {tipo === 'taller' && 'Compostura sin confirmación previa: va directo al taller.'}
-            {tipo === 'trabajo_nuevo' && 'Pieza nueva que hay que fabricar para el cliente. Va directo al taller.'}
-          </p>
+          {tipo === 'presupuesto' && <p className="ayuda">Queda en estado Pendiente hasta que el cliente acepte o rechace.</p>}
+          {tipo === 'trabajo_nuevo' && <p className="ayuda">Pieza nueva que hay que fabricar para el cliente.</p>}
         </fieldset>
 
         <label>Descripción del trabajo
           <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
         </label>
 
-        {tipo !== 'presupuesto' && (
-          <label>Tallerista
-            <select value={tallerista} onChange={(e) => setTallerista(e.target.value)}>
-              <option value="">— Elegir después —</option>
-              {listas.talleristas.filter((t) => t.activo).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-            </select>
-            {listas.talleristas.length === 0 && <span className="ayuda">Todavía no cargaste talleristas. Podés hacerlo en <a href="#/talleristas">Talleristas</a>.</span>}
-          </label>
-        )}
+        {tipo === 'presupuesto' && <CamposPresupuesto v={pres} set={setPres} />}
+
+        <label>Tallerista
+          <CampoTallerista valor={tallerista} onChange={setTallerista} talleristas={listas.talleristas} placeholder="Quién va a hacer el trabajo" />
+        </label>
 
         <label>Foto de la pieza
           <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={elegirFoto} />
@@ -124,7 +133,6 @@ export default function Ingreso() {
         {msg?.ok && <div className="ok">{msg.ok} <a href="#/sobres" onClick={(e) => { e.preventDefault(); ir('sobres') }}>Ver sobres</a></div>}
 
         <button className="btn primario" disabled={guardando}>{guardando ? 'Guardando…' : 'Ingresar sobre'}</button>
-        <p className="ayuda">La fecha y hora de ingreso se registran automáticamente.</p>
       </form>
     </section>
   )

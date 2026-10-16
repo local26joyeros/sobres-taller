@@ -42,18 +42,29 @@ h3 { font-size: 1rem; margin: 1.2rem 0 .5rem; }
 /* Barra */
 .barra {
   position: sticky; top: 0; z-index: 10;
-  display: flex; align-items: center; gap: 1.5rem;
-  padding: .7rem 1.5rem;
+  display: flex; align-items: center; gap: .9rem;
+  padding: .6rem 1.2rem;
   background: var(--tinta); color: #fff;
 }
-.barra nav { display: flex; gap: .2rem; flex: 1; align-items: center; }
-.barra nav a {
-  color: #d9d2c5; text-decoration: none; padding: .45rem .75rem; border-radius: 7px; font-weight: 500;
+.hamburguesa { background: none; border: 0; color: #fff; font-size: 1.5rem; cursor: pointer; padding: .1rem .4rem; line-height: 1; }
+.seccion-actual { margin-left: auto; color: #d9d2c5; font-size: .9rem; }
+
+/* Menú lateral */
+.cajon-fondo { position: fixed; inset: 0; background: #1f1c1880; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; }
+.cajon-fondo.abierto { opacity: 1; pointer-events: auto; }
+.cajon {
+  position: fixed; top: 0; bottom: 0; left: 0; width: 270px; max-width: 85vw; z-index: 31;
+  background: var(--tinta); color: #fff; padding: 1rem .8rem;
+  display: flex; flex-direction: column; gap: .2rem;
+  transform: translateX(-100%); transition: transform .22s ease;
 }
-.barra nav a:hover { color: #fff; background: #ffffff14; }
-.barra nav a.activo { color: var(--tinta); background: var(--oro-claro); }
-.salir { margin-left: auto; background: none; border: 1px solid #ffffff40; color: #d9d2c5; border-radius: 7px; padding: .4rem .8rem; cursor: pointer; font: inherit; }
-.hamburguesa { display: none; margin-left: auto; background: none; border: 0; color: #fff; font-size: 1.5rem; cursor: pointer; }
+.cajon.abierto { transform: none; }
+.cajon-cab { display: flex; justify-content: space-between; align-items: center; padding: 0 .4rem 1rem; border-bottom: 1px solid #ffffff1f; margin-bottom: .6rem; }
+.cerrar-cajon { background: none; border: 0; color: #d9d2c5; font-size: 1.7rem; cursor: pointer; line-height: 1; }
+.cajon a { color: #d9d2c5; text-decoration: none; padding: .7rem .8rem; border-radius: 8px; font-weight: 500; }
+.cajon a:hover { color: #fff; background: #ffffff14; }
+.cajon a.activo { color: var(--tinta); background: var(--oro-claro); }
+.salir { margin-top: auto; background: none; border: 1px solid #ffffff40; color: #d9d2c5; border-radius: 8px; padding: .6rem .8rem; cursor: pointer; font: inherit; text-align: left; }
 
 main { max-width: 1150px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem; }
 
@@ -72,6 +83,15 @@ fieldset { border: 0; padding: 0; margin: 0; }
 legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 .fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .grilla6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; }
+.grilla-pres { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 1rem; padding: .9rem; background: var(--oro-claro); border-radius: var(--radio); }
+.grilla-pres > label { min-width: 0; }
+.grilla-pres input, .grilla-pres select { width: 100%; }
+.con-moneda { display: flex; gap: .4rem; }
+.con-moneda select { width: auto; }
+.acciones .mini-form input[list] { flex: 1 1 100%; }
+.con-moneda input { flex: 1; }
+.rechazo { color: var(--rojo); font-weight: 600; }
+.modal .grilla-pres { grid-template-columns: 1fr; }
 .opciones { display: flex; flex-wrap: wrap; gap: .5rem; }
 .opcion {
   flex-direction: row; align-items: center; gap: .5rem;
@@ -186,12 +206,8 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 /* Celular */
 @media (max-width: 760px) {
   main { padding: 1rem 1rem 4rem; }
-  .barra { padding: .6rem 1rem; flex-wrap: wrap; }
-  .hamburguesa { display: block; }
-  .barra nav { display: none; flex-direction: column; align-items: stretch; width: 100%; flex-basis: 100%; }
-  .barra nav.abierto { display: flex; }
-  .salir { margin: .3rem 0 0; }
-  .fila2 { grid-template-columns: 1fr; }
+  .barra { padding: .6rem 1rem; }
+  .fila2, .grilla-pres { grid-template-columns: 1fr; }
   .grilla6, .saldos { grid-template-columns: repeat(2, 1fr); }
   .lista { grid-template-columns: 1fr; }
 

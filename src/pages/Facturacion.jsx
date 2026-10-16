@@ -69,7 +69,7 @@ export default function Facturacion() {
                 {filas.map((f, i) => (
                   <tr key={f.t.id} className={f.sel ? '' : 'apagada'}>
                     <td><input type="checkbox" checked={f.sel} onChange={(e) => cambiar(i, 'sel', e.target.checked)} /></td>
-                    <td data-l="Sobre"><b>{f.t.nro_sobre}</b><div className="meta">{f.t.descripcion}</div>{f.t.presupuesto_respuesta === 'aceptado' && <div className="meta">Con presupuesto aprobado</div>}</td>
+                    <td data-l="Sobre"><b>{f.t.nro_sobre}</b><div className="meta">{f.t.descripcion}</div>{f.t.presupuesto_respuesta === 'aceptado' && <div className="meta">Con presupuesto aprobado</div>}{f.t.presupuesto_respuesta === 'rechazado' && <div className="meta rechazo">Presupuesto rechazado</div>}</td>
                     <td data-l="Cliente">{f.t.cliente}<div className="meta">{fecha(f.t.ingresado_en)}</div></td>
                     <td data-l="Hechura"><input className="num" inputMode="decimal" value={f.hechura} onChange={(e) => cambiar(i, 'hechura', e.target.value)} /></td>
                     <td data-l="Moneda">

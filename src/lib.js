@@ -8,9 +8,9 @@ export const sb = createClient(url, key)
 
 export const ESTADOS = {
   presupuesto: 'Presupuesto',
-  esperando_confirmacion: 'Esperando confirmación',
+  esperando_confirmacion: 'Pendiente',
   rechazado: 'Rechazado – para devolver',
-  taller: 'Taller',
+  taller: 'En taller',
   listo_para_facturar: 'Listo para facturar',
   facturado: 'Facturado',
   entregado: 'Entregado',
@@ -18,7 +18,7 @@ export const ESTADOS = {
 
 export const TIPOS = {
   presupuesto: 'Presupuesto',
-  taller: 'Taller (compostura)',
+  taller: 'Taller',
   trabajo_nuevo: 'Trabajo nuevo',
 }
 
@@ -77,6 +77,26 @@ export async function cargarListas() {
     sb.from('talleristas').select('id,nombre,activo').order('nombre'),
   ])
   return { clientes: c.data || [], talleristas: t.data || [] }
+}
+
+// "En taller (Alejandro)"
+export const estadoTexto = (t) =>
+  t.estado === 'taller' && t.tallerista ? `En taller (${t.tallerista})` : ESTADOS[t.estado]
+
+export const etiquetaPeso = (metal) =>
+  metal === 'oro' ? 'Peso oro 18k (g)' : metal === 'plata' ? 'Peso plata fina (g)' : 'Peso platino fino (g)'
+
+export const hoyAR = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)
+
+// Devuelve el id del tallerista con ese nombre; si no existe, lo crea.
+export async function resolverTallerista(nombre, talleristas) {
+  const n = (nombre || '').trim()
+  if (!n) return null
+  const t = talleristas.find((x) => x.nombre.toLowerCase() === n.toLowerCase())
+  if (t) return t.id
+  const { data, error } = await sb.from('talleristas').insert({ nombre: n }).select('id').single()
+  if (error) throw error
+  return data.id
 }
 
 export async function fotoUrl(path) {

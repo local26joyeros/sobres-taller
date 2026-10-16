@@ -149,7 +149,7 @@ function Cuenta({ id }) {
       <a href="#/clientes" className="volver no-print">← Clientes</a>
       <div className="hoja">
         <div className="hoja-cab">
-          <div className="marca">Sobres<span>·</span>Taller</div>
+          <div className="marca">Trabajos <span>Local 26</span></div>
           <div><b>Estado de cuenta</b><div className="meta">Emitido {fecha(new Date())}</div></div>
         </div>
         <div className="titulo-cliente">
@@ -208,7 +208,7 @@ function Cuenta({ id }) {
       <form className="card form no-print" onSubmit={registrar}>
         <h2>Registrar movimiento</h2>
         <div className="opciones">
-          {[['pago', 'Pago'], ['entrega_metal', 'Entrega de metal'], ['apertura', 'Saldo inicial'], ['ajuste', 'Ajuste']].map(([k, t]) => (
+          {[['pago', 'Pago'], ['apertura', 'Saldo inicial'], ['ajuste', 'Ajuste']].map(([k, t]) => (
             <label key={k} className={'opcion' + (form.tipo === k ? ' sel' : '')}>
               <input type="radio" checked={form.tipo === k} onChange={() => setForm({ ...form, tipo: k })} />{t}
             </label>

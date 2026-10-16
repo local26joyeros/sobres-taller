@@ -76,7 +76,7 @@ export default function Facturados({ params }) {
 
       <div className="hoja">
         <div className="hoja-cab">
-          <div className="marca">Sobres<span>·</span>Taller</div>
+          <div className="marca">Trabajos <span>Local 26</span></div>
           <div>
             <b>Trabajos facturados</b>
             <div className="meta">

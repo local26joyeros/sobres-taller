@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
-import { sb, ESTADOS, TIPOS, METALES, MONEDAS, cargarListas, errorMsg, fecha, hechura, gramos, num, fotoUrl, ir } from '../lib'
+import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, hoyAR, etiquetaPeso } from '../lib'
 import { subirFoto } from '../foto'
+import { CampoTallerista, CamposPresupuesto } from '../components'
 
 const PESTANAS = [
-  ['presupuestos', 'Presupuestos', ['presupuesto', 'esperando_confirmacion']],
-  ['taller', 'Taller', ['taller']],
+  ['pendientes', 'Pendientes', ['presupuesto', 'esperando_confirmacion']],
+  ['taller', 'En taller', ['taller']],
   ['listos', 'Listos para facturar', ['listo_para_facturar']],
   ['entregar', 'Para entregar', ['facturado', 'rechazado']],
   ['entregados', 'Entregados', ['entregado']],
@@ -38,12 +39,13 @@ export default function Sobres({ params }) {
     setCargando(false)
   }, [tab[0]]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const recargarListas = () => cargarListas().then(setListas)
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => { cargarListas().then(setListas) }, [])
+  useEffect(() => { recargarListas() }, [])
 
   async function accion(fn) {
     setError('')
-    try { await fn(); await cargar() } catch (e) { setError(errorMsg(e)) }
+    try { await fn(); await cargar(); recargarListas() } catch (e) { setError(errorMsg(e)) }
   }
 
   const b = buscar.trim().toLowerCase()
@@ -92,31 +94,26 @@ export default function Sobres({ params }) {
   )
 }
 
-function SelectorTallerista({ talleristas, valor, onChange }) {
-  return (
-    <select value={valor || ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
-      <option value="">— Tallerista —</option>
-      {talleristas.filter((t) => t.activo || t.id === valor).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-    </select>
-  )
-}
-
 function Tarjeta({ t, talleristas, accion, abrir }) {
-  const [pres, setPres] = useState({ hechura: '', moneda: 'ARS', metal: 'oro' })
-  const [tallAceptar, setTallAceptar] = useState('')
-
-  async function cargarPresupuesto(e) {
-    e.preventDefault()
-    const h = num(pres.hechura)
-    if (h === null || Number.isNaN(h)) throw new Error('Monto inválido')
-    const { error } = await sb.rpc('cargar_presupuesto', { p_trabajo: t.id, p_hechura: h, p_moneda: pres.moneda, p_metal: pres.metal })
-    if (error) throw error
-  }
+  const [traspaso, setTraspaso] = useState(null) // { nombre, fecha }
 
   const upd = async (campos) => {
     const { error } = await sb.from('trabajos').update(campos).eq('id', t.id)
     if (error) throw error
   }
+
+  const responder = (aceptado) => accion(async () => {
+    const { error } = await sb.rpc('responder_presupuesto', { p_trabajo: t.id, p_aceptado: aceptado })
+    if (error) throw error
+  })
+
+  const pasar = () => accion(async () => {
+    const id = await resolverTallerista(traspaso.nombre, talleristas)
+    if (!id) throw new Error('Escribí el nombre del tallerista.')
+    const { error } = await sb.rpc('asignar_tallerista', { p_trabajo: t.id, p_tallerista: id, p_fecha: traspaso.fecha || null })
+    if (error) throw error
+    setTraspaso(null)
+  })
 
   return (
     <div className={'card sobre est-' + t.estado}>
@@ -125,13 +122,14 @@ function Tarjeta({ t, talleristas, accion, abrir }) {
           <div className="nro">Sobre {t.nro_sobre}</div>
           <div className="cliente">{t.cliente}</div>
         </div>
-        <span className={'chip est-' + t.estado}>{ESTADOS[t.estado]}</span>
+        <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>
       </div>
       <div className="sobre-cuerpo" onClick={abrir} role="button">
-        <div className="meta">{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}{t.tallerista ? ' · ' + t.tallerista : ''}</div>
+        <div className="meta">{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}{t.estado !== 'taller' && t.tallerista ? ' · ' + t.tallerista : ''}</div>
         {t.descripcion && <div className="desc">{t.descripcion}</div>}
         {t.presupuesto_hechura != null && (
           <div className="meta">Presupuesto: {hechura(t.presupuesto_hechura, t.presupuesto_moneda)} · {METALES[t.presupuesto_metal] || '—'}
+            {t.presupuesto_peso != null ? ' ' + gramos(t.presupuesto_peso) : ''}
             {t.presupuesto_respuesta ? ' · ' + (t.presupuesto_respuesta === 'aceptado' ? 'Aceptado' : 'Rechazado') : ''}</div>
         )}
         {t.estado === 'facturado' && (
@@ -141,42 +139,30 @@ function Tarjeta({ t, talleristas, accion, abrir }) {
       </div>
 
       <div className="acciones">
-        {t.estado === 'presupuesto' && (
-          <form className="mini-form" onSubmit={(e) => accion(() => cargarPresupuesto(e))}>
-            <input placeholder="Hechura" inputMode="decimal" value={pres.hechura} onChange={(e) => setPres({ ...pres, hechura: e.target.value })} required />
-            <select value={pres.moneda} onChange={(e) => setPres({ ...pres, moneda: e.target.value })}>
-              {Object.entries(MONEDAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <select value={pres.metal} onChange={(e) => setPres({ ...pres, metal: e.target.value })}>
-              {Object.entries(METALES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <button className="btn">Cargar presupuesto</button>
-          </form>
-        )}
         {t.estado === 'esperando_confirmacion' && (
           <>
-            <SelectorTallerista talleristas={talleristas} valor={tallAceptar ? Number(tallAceptar) : null} onChange={(v) => setTallAceptar(v || '')} />
-            <button className="btn ok" onClick={() => accion(async () => {
-              const { error } = await sb.rpc('responder_presupuesto', { p_trabajo: t.id, p_aceptado: true, p_tallerista: tallAceptar ? Number(tallAceptar) : null })
-              if (error) throw error
-            })}>Aceptado</button>
-            <button className="btn peligro" onClick={() => window.confirm(`¿Marcar el presupuesto del sobre ${t.nro_sobre} como rechazado?`) && accion(async () => {
-              const { error } = await sb.rpc('responder_presupuesto', { p_trabajo: t.id, p_aceptado: false })
-              if (error) throw error
-            })}>Rechazado</button>
-            <button className="btn suave" onClick={() => accion(() => upd({ estado: 'presupuesto' }))}>Corregir monto</button>
+            <button className="btn ok" onClick={() => responder(true)}>Aceptado</button>
+            <button className="btn peligro" onClick={() => window.confirm(`¿Marcar el presupuesto del sobre ${t.nro_sobre} como rechazado? Pasa a Listo para facturar.`) && responder(false)}>Rechazado</button>
           </>
         )}
-        {t.estado === 'taller' && (
+        {t.estado === 'taller' && !traspaso && (
           <>
-            <SelectorTallerista talleristas={talleristas} valor={t.tallerista_id} onChange={(v) => accion(() => upd({ tallerista_id: v }))} />
             <button className="btn primario" onClick={() => accion(() => upd({ estado: 'listo_para_facturar' }))}>Listo para facturar</button>
+            <button className="btn" onClick={() => setTraspaso({ nombre: '', fecha: hoyAR() })}>{t.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
           </>
+        )}
+        {t.estado === 'taller' && traspaso && (
+          <div className="mini-form">
+            <CampoTallerista id={'tall-' + t.id} valor={traspaso.nombre} onChange={(v) => setTraspaso({ ...traspaso, nombre: v })} talleristas={talleristas} placeholder="Nuevo tallerista" />
+            <input type="date" value={traspaso.fecha} onChange={(e) => setTraspaso({ ...traspaso, fecha: e.target.value })} />
+            <button className="btn primario" onClick={pasar}>Pasar</button>
+            <button className="btn suave" onClick={() => setTraspaso(null)}>Cancelar</button>
+          </div>
         )}
         {t.estado === 'listo_para_facturar' && (
           <>
             <button className="btn primario" onClick={() => ir('facturacion')}>Ir a facturación</button>
-            <button className="btn suave" onClick={() => accion(() => upd({ estado: 'taller' }))}>Volver a taller</button>
+            {t.presupuesto_respuesta !== 'rechazado' && <button className="btn suave" onClick={() => accion(() => upd({ estado: 'taller' }))}>Volver a taller</button>}
           </>
         )}
         {(t.estado === 'facturado' || t.estado === 'rechazado') && (
@@ -187,21 +173,34 @@ function Tarjeta({ t, talleristas, accion, abrir }) {
   )
 }
 
+const aTexto = (v) => (v == null ? '' : String(v).replace('.', ','))
+
 function Detalle({ t, cerrar, recargar }) {
   const [url, setUrl] = useState(null)
   const [hist, setHist] = useState([])
+  const [talleres, setTalleres] = useState([])
   const [desc, setDesc] = useState(t.descripcion || '')
+  const [pres, setPres] = useState({ hechura: aTexto(t.presupuesto_hechura), moneda: t.presupuesto_moneda || 'ARS', metal: t.presupuesto_metal || 'oro', peso: aTexto(t.presupuesto_peso) })
   const [msg, setMsg] = useState('')
   const [subiendo, setSubiendo] = useState(false)
 
   useEffect(() => {
     fotoUrl(t.foto_path).then(setUrl)
     sb.from('historial_estados').select('*').eq('trabajo_id', t.id).order('cambiado_en').then(({ data }) => setHist(data || []))
+    sb.from('traspasos_taller').select('id,fecha,talleristas(nombre)').eq('trabajo_id', t.id).order('fecha').order('id').then(({ data }) => setTalleres(data || []))
   }, [t.id, t.foto_path])
 
   async function guardarDesc() {
     const { error } = await sb.from('trabajos').update({ descripcion: desc.trim() || null }).eq('id', t.id)
     setMsg(error ? errorMsg(error) : 'Descripción guardada.')
+    recargar()
+  }
+
+  async function guardarPres() {
+    const h = num(pres.hechura), p = num(pres.peso)
+    if (h === null || Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
+    const { error } = await sb.from('trabajos').update({ presupuesto_hechura: h, presupuesto_moneda: pres.moneda, presupuesto_metal: pres.metal, presupuesto_peso: p }).eq('id', t.id)
+    setMsg(error ? errorMsg(error) : 'Presupuesto actualizado.')
     recargar()
   }
 
@@ -218,12 +217,15 @@ function Detalle({ t, cerrar, recargar }) {
     setSubiendo(false)
   }
 
+  // Estado con el nombre del tallerista al pasar a taller
+  const ESTADO_H = { presupuesto: 'Presupuesto', esperando_confirmacion: 'Pendiente', rechazado: 'Rechazado', taller: 'En taller', listo_para_facturar: 'Listo para facturar', facturado: 'Facturado', entregado: 'Entregado' }
+
   return (
     <div className="modal-fondo" onClick={cerrar}>
       <div className="modal card" onClick={(e) => e.stopPropagation()}>
         <button className="cerrar" onClick={cerrar} aria-label="Cerrar">×</button>
         <h2>Sobre {t.nro_sobre}</h2>
-        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <span className={'chip est-' + t.estado}>{ESTADOS[t.estado]}</span></div>
+        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span></div>
         {url ? <img src={url} className="foto-grande" alt={'Sobre ' + t.nro_sobre} /> : <div className="sin-foto">Sin foto</div>}
         <label className="btn suave archivo">{subiendo ? 'Subiendo…' : url ? 'Cambiar foto' : 'Agregar foto'}
           <input type="file" accept="image/*" capture="environment" onChange={nuevaFoto} hidden />
@@ -232,15 +234,38 @@ function Detalle({ t, cerrar, recargar }) {
           <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
         </label>
         <button className="btn" onClick={guardarDesc}>Guardar descripción</button>
+
+        {t.estado === 'esperando_confirmacion' && (
+          <>
+            <h3>Presupuesto</h3>
+            <CamposPresupuesto v={pres} set={setPres} />
+            <button className="btn" onClick={guardarPres}>Guardar presupuesto</button>
+          </>
+        )}
         {msg && <div className="ok">{msg}</div>}
+
+        {talleres.length > 0 && (
+          <>
+            <h3>Talleres</h3>
+            <table className="tabla compacta">
+              <tbody>
+                {talleres.map((x, i) => (
+                  <tr key={x.id}><td>{fechaCorta(x.fecha + 'T12:00')}</td><td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b>{x.talleristas?.nombre}</b></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
         <h3>Historial</h3>
         <table className="tabla compacta">
           <tbody>
             {hist.map((h) => (
-              <tr key={h.id}><td>{fecha(h.cambiado_en)}</td><td>{ESTADOS[h.estado_nuevo]}</td></tr>
+              <tr key={h.id}><td>{fecha(h.cambiado_en)}</td><td>{ESTADO_H[h.estado_nuevo]}</td></tr>
             ))}
           </tbody>
         </table>
+        {t.metal && t.peso != null && <div className="meta">{etiquetaPeso(t.metal)}: {gramos(t.peso)}</div>}
       </div>
     </div>
   )

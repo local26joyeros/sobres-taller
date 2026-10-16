@@ -37,7 +37,7 @@ function Login() {
   return (
     <div className="login">
       <form onSubmit={entrar} className="card login-card">
-        <div className="marca grande">Sobres<span>·</span>Taller</div>
+        <div className="marca grande">Trabajos <span>Local 26</span></div>
         <label>Correo<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
         <label>Contraseña<input type="password" value={pass} onChange={(e) => setPass(e.target.value)} required /></label>
         {err && <div className="error">{err}</div>}
@@ -63,28 +63,25 @@ export default function App() {
   if (sesion === undefined) return <div className="cargando">Cargando…</div>
   if (!sesion) return <Login />
 
-  async function cambiarClave() {
-    const nueva = window.prompt('Nueva contraseña (mínimo 8 caracteres):')
-    if (!nueva) return
-    if (nueva.length < 8) return window.alert('La contraseña tiene que tener al menos 8 caracteres.')
-    const { error } = await sb.auth.updateUser({ password: nueva })
-    window.alert(error ? 'No se pudo cambiar: ' + errorMsg(error) : 'Contraseña cambiada.')
-  }
-
   const { pagina, params } = ruta
   return (
     <div className="app">
       <header className="barra no-print">
-        <div className="marca">Sobres<span>·</span>Taller</div>
-        <button className="hamburguesa" onClick={() => setMenu(!menu)} aria-label="Menú">☰</button>
-        <nav className={menu ? 'abierto' : ''}>
-          {PAGINAS.map(([k, t]) => (
-            <a key={k} href={'#/' + k} className={pagina === k ? 'activo' : ''}>{t}</a>
-          ))}
-          <button className="salir" onClick={cambiarClave}>Contraseña</button>
-          <button className="salir" style={{ marginLeft: 0 }} onClick={() => sb.auth.signOut()}>Salir</button>
-        </nav>
+        <button className="hamburguesa" onClick={() => setMenu(true)} aria-label="Abrir menú">☰</button>
+        <div className="marca">Trabajos <span>Local 26</span></div>
+        <div className="seccion-actual">{PAGINAS.find(([k]) => k === pagina)?.[1]}</div>
       </header>
+      <div className={'cajon-fondo no-print' + (menu ? ' abierto' : '')} onClick={() => setMenu(false)} />
+      <nav className={'cajon no-print' + (menu ? ' abierto' : '')} aria-hidden={!menu}>
+        <div className="cajon-cab">
+          <div className="marca">Trabajos <span>Local 26</span></div>
+          <button className="cerrar-cajon" onClick={() => setMenu(false)} aria-label="Cerrar menú">×</button>
+        </div>
+        {PAGINAS.map(([k, t]) => (
+          <a key={k} href={'#/' + k} className={pagina === k ? 'activo' : ''} onClick={() => setMenu(false)}>{t}</a>
+        ))}
+        <button className="salir" onClick={() => sb.auth.signOut()}>Salir</button>
+      </nav>
       <main>
         {pagina === 'ingreso' && <Ingreso />}
         {pagina === 'sobres' && <Sobres params={params} />}
