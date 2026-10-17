@@ -300,3 +300,8 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 .lista-talleristas { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .8rem; }
 .lista-talleristas .btn { width: 100%; padding: .7rem; }
 .confirmar > .btn.suave { width: 100%; }
+
+.pagado { font-size: .9rem; color: var(--verde); background: var(--verde-claro); padding: .3rem .6rem; border-radius: 8px; align-self: flex-start; }
+.monto-pago { margin-bottom: 1rem; }
+.monto-pago input { font-size: 1.15rem; text-align: right; }
+h4.sub { margin: 1rem 0 .4rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); }

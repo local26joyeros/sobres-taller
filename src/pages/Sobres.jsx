@@ -48,7 +48,7 @@ export default function Sobres({ params }) {
     const ids = (data || []).map((t) => t.id)
     const rec = {}
     if (ids.length) {
-      const { data: tr } = await sb.from('traspasos_taller').select('id,trabajo_id,fecha,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id')
+      const { data: tr } = await sb.from('traspasos_taller').select('id,trabajo_id,fecha,hasta,pago,pago_moneda,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id')
       ;(tr || []).forEach((x) => { (rec[x.trabajo_id] ||= []).push(x) })
     }
     setTrabajos((data || []).map((t) => ({ ...t, talleres: rec[t.id] || [] })))
@@ -71,6 +71,16 @@ export default function Sobres({ params }) {
   const [confirmacion, setConfirmacion] = useState(null)
   const preguntar = (texto) => new Promise((resolve) => setConfirmacion({ texto, resolve }))
   const responderConf = (si) => { confirmacion.resolve(si); setConfirmacion(null) }
+
+  // Cuánto se le pagó al tallerista
+  const [pago, setPago] = useState(null)
+  const preguntarPago = (texto) => new Promise((resolve) => setPago({ texto, resolve, monto: '', moneda: 'ARS', error: '' }))
+  function responderPago(ok) {
+    if (!ok) { pago.resolve(null); setPago(null); return }
+    const m = num(pago.monto)
+    if (m === null || Number.isNaN(m) || m < 0) return setPago({ ...pago, error: 'Escribí el monto (puede ser 0).' })
+    pago.resolve({ monto: m, moneda: pago.moneda }); setPago(null)
+  }
 
   // Lista para elegir a qué tallerista vuelve un sobre
   const [eleccion, setEleccion] = useState(null)
@@ -132,18 +142,37 @@ export default function Sobres({ params }) {
         </div>
       )}
       {error && <div className="error">{error}</div>}
-      {cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : tab[0] === 'talleristas' ? (
-        <ResumenTalleristas trabajos={visibles} abrir={setDetalle} />
-      ) : (
+      {tab[0] === 'talleristas' ? (
+        <ResumenTalleristas abrir={(id) => setDetalle(trabajos.find((t) => t.id === id) || null)} />
+      ) : cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
         <div className="lista">
           {visibles.map((t) => (
-            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} preguntar={preguntar} abrir={() => setDetalle(t)}
+            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} preguntar={preguntar} preguntarPago={preguntarPago} abrir={() => setDetalle(t)}
               marcado={tab[0] === 'listos' ? marcados.includes(t.id) : null} marcar={(si) => marcar(t.id, si)} />
           ))}
         </div>
       )}
       {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} preguntar={preguntar} elegirTallerista={elegirTallerista}
         accion={async (fn) => { await accion(fn); setDetalle(null) }} />}
+      {pago && (
+        <div className="modal-fondo centrado" onClick={() => responderPago(false)}>
+          <form className="modal card confirmar" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); responderPago(true) }}>
+            <p>{pago.texto}</p>
+            <div className="con-moneda monto-pago">
+              <input inputMode="decimal" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value, error: '' })} placeholder="Monto" autoFocus />
+              <select value={pago.moneda} onChange={(e) => setPago({ ...pago, moneda: e.target.value })}>
+                <option value="ARS">Pesos</option>
+                <option value="USD">Dólares</option>
+              </select>
+            </div>
+            {pago.error && <div className="error">{pago.error}</div>}
+            <div className="botones">
+              <button type="button" className="btn suave" onClick={() => responderPago(false)}>Cancelar</button>
+              <button className="btn ok">Aceptar</button>
+            </div>
+          </form>
+        </div>
+      )}
       {eleccion && (
         <div className="modal-fondo centrado" onClick={() => responderElec(null)}>
           <div className="modal card confirmar" onClick={(e) => e.stopPropagation()}>
@@ -193,33 +222,86 @@ function Recorrido({ t }) {
   )
 }
 
-function ResumenTalleristas({ trabajos, abrir }) {
+const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : '')
+const montoPago = (v, m) => (v == null ? '—' : hechura(v, m))
+
+function ResumenTalleristas({ abrir }) {
+  const [filas, setFilas] = useState(null)
+  const [abierto, setAbierto] = useState({})
+
+  useEffect(() => {
+    sb.from('traspasos_taller')
+      .select('id,fecha,hasta,pago,pago_moneda,tallerista_id,talleristas(nombre),trabajos(id,nro_sobre,descripcion,estado,clientes(nombre))')
+      .order('fecha', { ascending: false }).order('id', { ascending: false }).limit(1000)
+      .then(({ data }) => setFilas(data || []))
+  }, [])
+
+  if (!filas) return <div className="vacio">Cargando…</div>
+  if (!filas.length) return <div className="vacio">Todavía no hay sobres entregados a talleristas.</div>
+
   const grupos = {}
-  trabajos.forEach((t) => { const k = t.tallerista || 'Sin tallerista'; (grupos[k] ||= []).push(t) })
-  const nombres = Object.keys(grupos).sort((a, b) => (a === 'Sin tallerista') - (b === 'Sin tallerista') || a.localeCompare(b))
-  const desde = (t) => { const u = (t.talleres || []).at(-1); return u ? `${u.fecha.slice(8, 10)}/${u.fecha.slice(5, 7)}` : '' }
+  filas.forEach((x) => { const n = x.talleristas?.nombre || '—'; (grupos[n] ||= []).push(x) })
+  const nombres = Object.keys(grupos).sort((a, b) => a.localeCompare(b))
+
   return (
     <div className="resumen-talleristas">
-      {nombres.map((n) => (
-        <div key={n} className="card grupo-tallerista">
-          <div className="grupo-cab"><b>{n}</b><span className="contador">{grupos[n].length}</span></div>
-          <table className="tabla compacta">
-            <thead><tr><th>Sobre</th><th>Cliente</th><th>Trabajo</th><th className="d">Desde</th></tr></thead>
-            <tbody>
-              {grupos[n].map((t) => (
-                <tr key={t.id} className="clic" onClick={() => abrir(t)}>
-                  <td><b>{t.nro_sobre}</b></td><td>{t.cliente}</td><td className="meta">{t.descripcion}</td><td className="d">{desde(t)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {nombres.map((n) => {
+        const actuales = grupos[n].filter((x) => !x.hasta && x.trabajos?.estado === 'taller')
+        const terminados = grupos[n].filter((x) => x.hasta)
+        const total = (m) => terminados.filter((x) => x.pago != null && x.pago_moneda === m).reduce((s, x) => s + Number(x.pago), 0)
+        const verTodos = abierto[n]
+        return (
+          <div key={n} className="card grupo-tallerista">
+            <div className="grupo-cab"><b>{n}</b><span className="meta">{actuales.length} en su taller</span></div>
+
+            {actuales.length > 0 && (
+              <table className="tabla compacta">
+                <thead><tr><th>Sobre</th><th>Cliente</th><th>Trabajo</th><th className="d">Entregado</th></tr></thead>
+                <tbody>
+                  {actuales.map((x) => (
+                    <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
+                      <td><b>{x.trabajos.nro_sobre}</b></td><td>{x.trabajos.clientes?.nombre}</td><td className="meta">{x.trabajos.descripcion}</td><td className="d">{dma(x.fecha)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {terminados.length > 0 && (
+              <>
+                <h4 className="sub">Trabajos que ya salieron</h4>
+                <table className="tabla compacta">
+                  <thead><tr><th>Sobre</th><th className="d">Entregado</th><th className="d">Salió</th><th className="d">Pagado</th></tr></thead>
+                  <tbody>
+                    {(verTodos ? terminados : terminados.slice(0, 8)).map((x) => (
+                      <tr key={x.id}>
+                        <td><b>{x.trabajos?.nro_sobre}</b> <span className="meta">{x.trabajos?.clientes?.nombre}</span></td>
+                        <td className="d">{dma(x.fecha)}</td><td className="d">{dma(x.hasta)}</td>
+                        <td className="d">{x.pago == null ? <span className="meta">Pasó a otro taller</span> : montoPago(x.pago, x.pago_moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr><td colSpan={3}>Total pagado</td><td className="d">
+                      {total('ARS') > 0 && <div>{hechura(total('ARS'), 'ARS')}</div>}
+                      {total('USD') > 0 && <div>{hechura(total('USD'), 'USD')}</div>}
+                      {!total('ARS') && !total('USD') && '—'}
+                    </td></tr>
+                  </tfoot>
+                </table>
+                {terminados.length > 8 && (
+                  <button className="btn suave" onClick={() => setAbierto({ ...abierto, [n]: !verTodos })}>{verTodos ? 'Ver menos' : `Ver los ${terminados.length}`}</button>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-function Tarjeta({ t, talleristas, accion, preguntar, abrir, marcado, marcar }) {
+function Tarjeta({ t, talleristas, accion, preguntar, preguntarPago, abrir, marcado, marcar }) {
   const opciones = talleristas.filter((x) => x.activo && x.id !== t.tallerista_id)
   const [cambiando, setCambiando] = useState(false)
   const [destino, setDestino] = useState('')
@@ -252,9 +334,14 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir, marcado, marcar }) 
   }
 
   async function listo() {
-    if (!(await preguntar(`¿Estás seguro de que el sobre ${t.nro_sobre} está listo para facturar?`))) return
-    accion(() => upd({ estado: 'listo_para_facturar' }))
+    const p = await preguntarPago(`Sobre ${t.nro_sobre} listo para facturar. ¿Cuánto le pagaste${t.tallerista ? ' a ' + t.tallerista : ''} por este trabajo?`)
+    if (!p) return
+    accion(async () => {
+      const { error } = await sb.rpc('marcar_listo', { p_trabajo: t.id, p_pago: p.monto, p_moneda: p.moneda })
+      if (error) throw error
+    })
   }
+  const ultimo = (t.talleres || []).at(-1)
 
   return (
     <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')}>
@@ -281,6 +368,9 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir, marcado, marcar }) 
         )}
         {t.estado === 'facturado' && (
           <div className="meta">Facturado {fecha(t.facturado_en)} · {hechura(t.hechura, t.hechura_moneda)} · {METALES[t.metal] || ''} {t.peso_fino != null ? gramos(t.peso_fino) + ' fino' : ''}</div>
+        )}
+        {t.estado === 'listo_para_facturar' && ultimo?.pago != null && (
+          <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{hechura(ultimo.pago, ultimo.pago_moneda)}</b></div>
         )}
         {t.foto_path && <div className="meta">📷 Tiene foto</div>}
       </div>
