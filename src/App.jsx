@@ -85,7 +85,7 @@ export default function App() {
       <main>
         {pagina === 'ingreso' && <Ingreso />}
         {pagina === 'sobres' && <Sobres params={params} />}
-        {pagina === 'facturacion' && <Facturacion />}
+        {pagina === 'facturacion' && <Facturacion params={params} />}
         {pagina === 'facturados' && <Facturados params={params} />}
         {pagina === 'clientes' && <Clientes params={params} />}
         {pagina === 'talleristas' && <Talleristas />}

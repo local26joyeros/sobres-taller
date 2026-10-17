@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { sb, METALES, MONEDAS, errorMsg, fecha, gramos, num, fino, ir } from '../lib'
 
-export default function Facturacion() {
+export default function Facturacion({ params }) {
+  // Si viene de "Listos para facturar" con sobres elegidos, se marcan solo esos
+  const elegidosInicio = (params?.get('sobres') || '').split(',').filter(Boolean)
   const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -13,7 +15,7 @@ export default function Facturacion() {
     if (error) setError(errorMsg(error))
     setFilas((data || []).map((t) => ({
       t,
-      sel: true,
+      sel: elegidosInicio.length ? elegidosInicio.includes(String(t.id)) : true,
       hechura: t.hechura != null ? String(t.hechura).replace('.', ',') : '',
       moneda: t.hechura_moneda || 'ARS',
       metal: t.metal || 'oro',
@@ -21,7 +23,7 @@ export default function Facturacion() {
     })))
     setCargando(false)
   }
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cambiar = (i, campo, v) => setFilas((fs) => fs.map((f, j) => (j === i ? { ...f, [campo]: v } : f)))
   const elegidas = filas.filter((f) => f.sel)

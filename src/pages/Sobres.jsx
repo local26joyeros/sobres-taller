@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, hoyAR, etiquetaPeso } from '../lib'
+import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, etiquetaPeso } from '../lib'
 import { subirFoto } from '../foto'
 import { CamposPresupuesto } from '../components'
 
@@ -10,7 +10,18 @@ const PESTANAS = [
   ['listos', 'Listos para facturar', ['listo_para_facturar']],
   ['entregar', 'Para entregar', ['facturado', 'rechazado']],
   ['entregados', 'Entregados', ['entregado']],
+  ['talleristas', 'Talleristas', ['taller']],
 ]
+
+// Devuelve sobres de "Listo para facturar" a un taller (queda registrado con la fecha de hoy)
+async function devolverATaller(ids, tallId) {
+  for (const id of ids) {
+    const { error } = await sb.from('trabajos').update({ estado: 'taller' }).eq('id', id)
+    if (error) throw error
+    const { error: e2 } = await sb.rpc('asignar_tallerista', { p_trabajo: id, p_tallerista: tallId })
+    if (e2) throw e2
+  }
+}
 
 export default function Sobres({ params }) {
   const tab = PESTANAS.find((p) => p[0] === params.get('tab')) || PESTANAS[0]
@@ -22,6 +33,8 @@ export default function Sobres({ params }) {
   const [detalle, setDetalle] = useState(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [marcados, setMarcados] = useState([])
+  const [tallDevolver, setTallDevolver] = useState('')
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -47,7 +60,7 @@ export default function Sobres({ params }) {
   }, [tab[0]]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const recargarListas = () => cargarListas().then(setListas)
-  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => { cargar(); setMarcados([]); setDetalle(null) }, [cargar])
   useEffect(() => { recargarListas() }, [])
 
   async function accion(fn) {
@@ -65,13 +78,29 @@ export default function Sobres({ params }) {
     (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || (t.descripcion || '').toLowerCase().includes(b)) &&
     (!filtroTall || String(t.tallerista_id) === filtroTall || (filtroTall === 'sin' && !t.tallerista_id)))
 
+  const activos = listas.talleristas.filter((x) => x.activo)
+  const tallElegido = tallDevolver || (activos[0] ? String(activos[0].id) : '')
+  const marcar = (id, si) => setMarcados((m) => (si ? [...m, id] : m.filter((x) => x !== id)))
+
+  async function facturarMarcados() {
+    if (!(await preguntar(`¿Estás seguro de facturar ${marcados.length === 1 ? 'el sobre elegido' : `los ${marcados.length} sobres elegidos`}?`))) return
+    ir('facturacion', { sobres: marcados.join(',') })
+  }
+
+  async function devolverMarcados() {
+    const nombre = activos.find((x) => String(x.id) === tallElegido)?.nombre
+    if (!nombre) return setError('Elegí a qué tallerista vuelve.')
+    if (!(await preguntar(`¿Estás seguro de devolver ${marcados.length === 1 ? 'el sobre elegido' : `los ${marcados.length} sobres elegidos`} al taller de ${nombre}?`))) return
+    accion(() => devolverATaller(marcados, Number(tallElegido)))
+  }
+
   const cuenta = (estados) => (estados ? estados.reduce((s, e) => s + (conteo[e] || 0), 0) : null)
 
   return (
     <section>
       <div className="pestanas">
         {PESTANAS.map(([k, t, est]) => {
-          const n = k === 'entregados' || k === 'todos' ? null : cuenta(est)
+          const n = k === 'entregados' || k === 'todos' || k === 'talleristas' ? null : cuenta(est)
           return (
             <a key={k} href={'#/sobres?tab=' + k} className={tab[0] === k ? 'activo' : ''}>
               {t}{n ? <span className="contador">{n}</span> : null}
@@ -90,17 +119,33 @@ export default function Sobres({ params }) {
         )}
       </div>
       {tab[0] === 'listos' && visibles.length > 0 && (
-        <div className="aviso">Estos sobres se facturan juntos en la pantalla <a href="#/facturacion">Facturación</a>.</div>
+        <div className="barra-lote card">
+          <label className="todos-check">
+            <input type="checkbox" checked={marcados.length === visibles.length} onChange={(e) => setMarcados(e.target.checked ? visibles.map((t) => t.id) : [])} />
+            {marcados.length ? `${marcados.length} elegido${marcados.length > 1 ? 's' : ''}` : 'Elegir todos'}
+          </label>
+          <button className="btn ok" disabled={!marcados.length} onClick={facturarMarcados}>Facturar</button>
+          <div className="devolver">
+            <select value={tallElegido} onChange={(e) => setTallDevolver(e.target.value)} aria-label="Tallerista">
+              {activos.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select>
+            <button className="btn" disabled={!marcados.length} onClick={devolverMarcados}>Devolver a taller</button>
+          </div>
+        </div>
       )}
       {error && <div className="error">{error}</div>}
-      {cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
+      {cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : tab[0] === 'talleristas' ? (
+        <ResumenTalleristas trabajos={visibles} abrir={setDetalle} />
+      ) : (
         <div className="lista">
           {visibles.map((t) => (
-            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} preguntar={preguntar} abrir={() => setDetalle(t)} />
+            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} preguntar={preguntar} abrir={() => setDetalle(t)}
+              marcado={tab[0] === 'listos' ? marcados.includes(t.id) : null} marcar={(si) => marcar(t.id, si)} />
           ))}
         </div>
       )}
-      {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} />}
+      {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} talleristas={listas.talleristas} preguntar={preguntar}
+        accion={async (fn) => { await accion(fn); setDetalle(null) }} />}
       {confirmacion && (
         <div className="modal-fondo centrado" onClick={() => responderConf(false)}>
           <div className="modal card confirmar" onClick={(e) => e.stopPropagation()}>
@@ -138,11 +183,37 @@ function Recorrido({ t }) {
   )
 }
 
-function Tarjeta({ t, talleristas, accion, preguntar, abrir }) {
+function ResumenTalleristas({ trabajos, abrir }) {
+  const grupos = {}
+  trabajos.forEach((t) => { const k = t.tallerista || 'Sin tallerista'; (grupos[k] ||= []).push(t) })
+  const nombres = Object.keys(grupos).sort((a, b) => (a === 'Sin tallerista') - (b === 'Sin tallerista') || a.localeCompare(b))
+  const desde = (t) => { const u = (t.talleres || []).at(-1); return u ? `${u.fecha.slice(8, 10)}/${u.fecha.slice(5, 7)}` : '' }
+  return (
+    <div className="resumen-talleristas">
+      {nombres.map((n) => (
+        <div key={n} className="card grupo-tallerista">
+          <div className="grupo-cab"><b>{n}</b><span className="contador">{grupos[n].length}</span></div>
+          <table className="tabla compacta">
+            <thead><tr><th>Sobre</th><th>Cliente</th><th>Trabajo</th><th className="d">Desde</th></tr></thead>
+            <tbody>
+              {grupos[n].map((t) => (
+                <tr key={t.id} className="clic" onClick={() => abrir(t)}>
+                  <td><b>{t.nro_sobre}</b></td><td>{t.cliente}</td><td className="meta">{t.descripcion}</td><td className="d">{desde(t)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Tarjeta({ t, talleristas, accion, preguntar, abrir, marcado, marcar }) {
   const opciones = talleristas.filter((x) => x.activo && x.id !== t.tallerista_id)
+  const [cambiando, setCambiando] = useState(false)
   const [destino, setDestino] = useState('')
   const [otro, setOtro] = useState('')
-  const [fechaPase, setFechaPase] = useState(hoyAR())
   const elegido = destino || (opciones[0] ? String(opciones[0].id) : 'otro')
 
   const upd = async (campos) => {
@@ -164,9 +235,9 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir }) {
     if (!(await preguntar(texto))) return
     accion(async () => {
       const id = elegido === 'otro' ? await resolverTallerista(nombre, talleristas) : Number(elegido)
-      const { error } = await sb.rpc('asignar_tallerista', { p_trabajo: t.id, p_tallerista: id, p_fecha: fechaPase || null })
+      const { error } = await sb.rpc('asignar_tallerista', { p_trabajo: t.id, p_tallerista: id })
       if (error) throw error
-      setDestino(''); setOtro(''); setFechaPase(hoyAR())
+      setDestino(''); setOtro(''); setCambiando(false)
     })
   }
 
@@ -176,9 +247,12 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir }) {
   }
 
   return (
-    <div className={'card sobre est-' + t.estado}>
+    <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')}>
       <div className="sobre-cab" onClick={abrir} role="button">
-        <div>
+        {marcado !== null && marcado !== undefined && (
+          <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
+        )}
+        <div className="sobre-titulo">
           <div className="nro">Sobre {t.nro_sobre}</div>
           <div className="cliente">{t.cliente}</div>
         </div>
@@ -210,23 +284,21 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir }) {
         )}
         {t.estado === 'taller' && (
           <div className="acciones-taller">
-            <div className="cambio-taller">
-              <select value={elegido} onChange={(e) => setDestino(e.target.value)} aria-label="Tallerista">
-                {opciones.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-                <option value="otro">Otro…</option>
-              </select>
-              {elegido === 'otro' && <input value={otro} onChange={(e) => setOtro(e.target.value)} placeholder="Nombre" autoFocus />}
-              <input type="date" value={fechaPase} onChange={(e) => setFechaPase(e.target.value)} aria-label="Fecha del cambio" />
-            </div>
-            <button className="btn" onClick={cambiarTaller}>{t.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
+            {!cambiando ? (
+              <button className="btn" onClick={() => setCambiando(true)}>{t.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
+            ) : (
+              <div className="cambio-taller">
+                <select value={elegido} onChange={(e) => setDestino(e.target.value)} aria-label="Tallerista" autoFocus>
+                  {opciones.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                  <option value="otro">Otro…</option>
+                </select>
+                {elegido === 'otro' && <input value={otro} onChange={(e) => setOtro(e.target.value)} placeholder="Nombre" autoFocus />}
+                <button className="btn primario" onClick={cambiarTaller}>Aceptar</button>
+                <button className="btn suave" onClick={() => { setCambiando(false); setDestino(''); setOtro('') }}>Cancelar</button>
+              </div>
+            )}
             <button className="btn ok" onClick={listo}>Listo para facturar</button>
           </div>
-        )}
-        {t.estado === 'listo_para_facturar' && (
-          <>
-            <button className="btn primario" onClick={() => ir('facturacion')}>Ir a facturación</button>
-            {t.presupuesto_respuesta !== 'rechazado' && <button className="btn suave" onClick={() => accion(() => upd({ estado: 'taller' }))}>Volver a taller</button>}
-          </>
         )}
         {(t.estado === 'facturado' || t.estado === 'rechazado') && (
           <button className="btn primario" onClick={() => window.confirm(`¿Confirmás que entregaste el sobre ${t.nro_sobre}?`) && accion(() => upd({ estado: 'entregado' }))}>Entregado</button>
@@ -238,7 +310,18 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir }) {
 
 const aTexto = (v) => (v == null ? '' : String(v).replace('.', ','))
 
-function Detalle({ t, cerrar, recargar }) {
+function Detalle({ t, cerrar, recargar, talleristas, preguntar, accion }) {
+  const activos = talleristas.filter((x) => x.activo)
+  const [tallVuelta, setTallVuelta] = useState('')
+  const tallElegido = tallVuelta || String(t.tallerista_id || activos[0]?.id || '')
+
+  async function devolver() {
+    const nombre = activos.find((x) => String(x.id) === tallElegido)?.nombre
+    if (!nombre) return
+    if (!(await preguntar(`¿Estás seguro de devolver el sobre ${t.nro_sobre} al taller de ${nombre}?`))) return
+    accion(() => devolverATaller([t.id], Number(tallElegido)))
+  }
+
   const [url, setUrl] = useState(null)
   const [hist, setHist] = useState([])
   const [talleres, setTalleres] = useState([])
@@ -306,6 +389,18 @@ function Detalle({ t, cerrar, recargar }) {
           </>
         )}
         {msg && <div className="ok">{msg}</div>}
+
+        {t.estado === 'listo_para_facturar' && (
+          <div className="acciones-detalle">
+            <button className="btn ok" onClick={() => ir('facturacion', { sobres: t.id })}>Ir a facturación</button>
+            <div className="devolver">
+              <select value={tallElegido} onChange={(e) => setTallVuelta(e.target.value)} aria-label="Tallerista">
+                {activos.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+              </select>
+              <button className="btn" onClick={devolver}>Volver a taller</button>
+            </div>
+          </div>
+        )}
 
         {talleres.length > 0 && (
           <>

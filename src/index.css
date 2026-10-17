@@ -263,3 +263,28 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
   a { color: inherit; text-decoration: none; }
   tr { break-inside: avoid; }
 }
+
+.acciones:empty { display: none; }
+.sobre-cab { align-items: center; }
+.sobre-titulo { flex: 1; min-width: 0; }
+.check-sobre { width: 1.35rem !important; height: 1.35rem !important; flex: none; }
+.sobre.marcado { outline: 2px solid var(--verde); outline-offset: -1px; }
+
+/* Barra de Listos para facturar */
+.barra-lote { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin-bottom: 1rem; position: sticky; top: 52px; z-index: 5; }
+.todos-check { flex-direction: row; align-items: center; gap: .5rem; margin-right: auto; }
+.devolver { display: flex; gap: .4rem; }
+.acciones-detalle { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: space-between; padding: .8rem; background: var(--verde-claro); border-radius: var(--radio); }
+
+/* Resumen por tallerista */
+.resumen-talleristas { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: .9rem; }
+.grupo-cab { display: flex; justify-content: space-between; align-items: center; margin-bottom: .6rem; font-size: 1.05rem; }
+.grupo-cab b { color: var(--verde); }
+.grupo-tallerista .tabla { border: 0; }
+@media (max-width: 760px) {
+  .resumen-talleristas { grid-template-columns: 1fr; }
+  .barra-lote { top: 48px; }
+  .barra-lote .btn.ok { flex: 1; }
+  .devolver { width: 100%; }
+  .devolver select { flex: 1; }
+}
