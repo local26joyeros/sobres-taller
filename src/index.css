@@ -321,3 +321,27 @@ h4.sub { margin: 1rem 0 .4rem; font-size: .8rem; text-transform: uppercase; lett
 .confirmar .botones .btn { flex: 1 1 0; min-width: 0; }
 .confirmar .botones { align-items: stretch; }
 .confirmar .botones .btn { height: 3rem; padding: 0 .7rem; line-height: 1; }
+
+/* ---- Ítems dentro del sobre ---- */
+.items-sobre { display: flex; flex-direction: column; gap: .5rem; }
+.item-fila { display: flex; flex-direction: column; gap: .35rem; padding: .55rem .65rem; border: 1px solid var(--linea); border-radius: 8px; background: #fcfbf8; }
+.item-fila.apagado { opacity: .55; }
+.item-linea { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.item-desc { font-weight: 500; white-space: pre-wrap; }
+.item-fila .acciones { border-top: 0; padding-top: 0; margin-top: .1rem; }
+.chips { display: flex; gap: .3rem; flex-wrap: wrap; justify-content: flex-end; }
+.sobre .meta.clic { cursor: pointer; }
+
+/* Nuevo ingreso con ítems */
+.items-ingreso { display: flex; flex-direction: column; gap: .8rem; }
+.item-ingreso { display: flex; flex-direction: column; gap: .8rem; padding: .9rem; border: 1px solid var(--linea); border-radius: var(--radio); background: #fcfbf8; }
+.item-cab { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.item-cab .btn-link { font-size: .9rem; }
+.agregar-item { align-self: flex-start; border-style: dashed; }
+
+/* Detalle con ítems */
+.modal.detalle { max-width: 600px; }
+.item-detalle { display: flex; flex-direction: column; gap: .6rem; padding: .9rem; border: 1px solid var(--linea); border-radius: var(--radio); background: #fcfbf8; }
+.item-detalle .foto-grande { max-height: 45vh; }
+.botones-par { display: flex; gap: .5rem; }
+.botones-par .btn { flex: 1 1 0; }

@@ -13,14 +13,30 @@ export default function Facturacion({ params }) {
     setCargando(true)
     const { data, error } = await sb.from('vista_trabajos').select('*').eq('estado', 'listo_para_facturar').order('nro_sobre')
     if (error) setError(errorMsg(error))
-    setFilas((data || []).map((t) => ({
-      t,
-      sel: elegidosInicio.length ? elegidosInicio.includes(String(t.id)) : true,
-      hechura: t.hechura != null ? String(t.hechura).replace('.', ',') : '',
-      moneda: t.hechura_moneda || 'ARS',
-      metal: t.metal || 'oro',
-      peso: t.peso != null ? String(t.peso).replace('.', ',') : '',
-    })))
+    // Ítems de cada sobre: se muestran y sus presupuestos aceptados precargan la facturación
+    const ids = (data || []).map((t) => t.id)
+    const porSobre = {}
+    if (ids.length) {
+      const { data: its } = await sb.from('items').select('trabajo_id,numero,descripcion,estado,presupuesto_hechura,presupuesto_moneda,presupuesto_metal,presupuesto_peso,presupuesto_respuesta').in('trabajo_id', ids).order('numero')
+      ;(its || []).forEach((i) => { (porSobre[i.trabajo_id] ||= []).push(i) })
+    }
+    const txt = (v) => (v == null ? '' : String(Math.round(v * 1000) / 1000).replace('.', ','))
+    setFilas((data || []).map((t) => {
+      const items = porSobre[t.id] || []
+      const acept = items.filter((i) => i.presupuesto_respuesta === 'aceptado' && i.presupuesto_hechura != null)
+      const moneda = t.hechura_moneda || acept[0]?.presupuesto_moneda || 'ARS'
+      const metal = t.metal || acept[0]?.presupuesto_metal || 'oro'
+      const hechura = t.hechura != null ? t.hechura
+        : acept.length ? acept.filter((i) => i.presupuesto_moneda === moneda).reduce((s, i) => s + Number(i.presupuesto_hechura), 0) : null
+      const pesos = acept.filter((i) => i.presupuesto_metal === metal && i.presupuesto_peso != null)
+      const peso = t.peso != null ? t.peso : pesos.length ? pesos.reduce((s, i) => s + Number(i.presupuesto_peso), 0) : null
+      return {
+        t, items,
+        sel: elegidosInicio.length ? elegidosInicio.includes(String(t.id)) : true,
+        hechura: txt(hechura), moneda, metal, peso: txt(peso),
+        mixto: acept.some((i) => i.presupuesto_moneda !== moneda),
+      }
+    }))
     setCargando(false)
   }
   useEffect(() => { cargar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -71,7 +87,15 @@ export default function Facturacion({ params }) {
                 {filas.map((f, i) => (
                   <tr key={f.t.id} className={f.sel ? '' : 'apagada'}>
                     <td><input type="checkbox" checked={f.sel} onChange={(e) => cambiar(i, 'sel', e.target.checked)} /></td>
-                    <td data-l="Sobre"><b>{f.t.nro_sobre}</b><div className="meta">{f.t.descripcion}</div>{f.t.presupuesto_respuesta === 'aceptado' && <div className="meta">Con presupuesto aprobado</div>}{f.t.presupuesto_respuesta === 'rechazado' && <div className="meta rechazo">Presupuesto rechazado</div>}</td>
+                    <td data-l="Sobre"><b>{f.t.nro_sobre}</b>
+                      {f.items.map((i) => (
+                        <div key={i.numero} className={'meta' + (i.estado === 'rechazado' ? ' rechazo' : '')}>
+                          {f.items.length > 1 ? `${i.numero}. ` : ''}{i.descripcion || 'Sin descripción'}
+                          {i.estado === 'rechazado' ? ' (presupuesto rechazado)' : i.presupuesto_respuesta === 'aceptado' ? ' (presupuesto aprobado)' : ''}
+                        </div>
+                      ))}
+                      {f.mixto && <div className="meta rechazo">Hay presupuestos en pesos y en dólares: revisá la hechura.</div>}
+                    </td>
                     <td data-l="Cliente">{f.t.cliente}<div className="meta">{fecha(f.t.ingresado_en)}</div></td>
                     <td data-l="Hechura"><input className="num" inputMode="decimal" value={f.hechura} onChange={(e) => cambiar(i, 'hechura', e.target.value)} /></td>
                     <td data-l="Moneda">

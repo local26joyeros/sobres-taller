@@ -1,27 +1,36 @@
 import { useEffect, useState, useCallback } from 'react'
-import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, etiquetaPeso } from '../lib'
-import { subirFoto, agregarFoto } from '../foto'
+import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista } from '../lib'
+import { subirFotoItem, agregarFotoItem } from '../foto'
 import { CamposPresupuesto, SelectorMoneda } from '../components'
 
+// Pestañas: las de ítems (taller, pendientes) muestran el sobre si alguno de sus ítems está en ese estado
 const PESTANAS = [
-  ['todos', 'Todos', null],
-  ['taller', 'En taller', ['taller']],
-  ['pendientes', 'Pendientes', ['presupuesto', 'esperando_confirmacion']],
-  ['listos', 'Listos para facturar', ['listo_para_facturar']],
-  ['entregar', 'Para entregar', ['facturado', 'rechazado']],
-  ['entregados', 'Entregados', ['entregado']],
-  ['talleristas', 'Talleristas', ['taller']],
+  ['todos', 'Todos'],
+  ['taller', 'En taller'],
+  ['pendientes', 'Pendientes'],
+  ['listos', 'Listos para facturar'],
+  ['entregar', 'Para entregar'],
+  ['entregados', 'Entregados'],
+  ['talleristas', 'Talleristas'],
 ]
-
-// Devuelve sobres de "Listo para facturar" a un taller (queda registrado con la fecha de hoy)
-async function devolverATaller(ids, tallId) {
-  for (const id of ids) {
-    const { error } = await sb.from('trabajos').update({ estado: 'taller' }).eq('id', id)
-    if (error) throw error
-    const { error: e2 } = await sb.rpc('asignar_tallerista', { p_trabajo: id, p_tallerista: tallId })
-    if (e2) throw e2
-  }
+const ESTADOS_SOBRE = {
+  taller: ['taller', 'esperando_confirmacion'],
+  pendientes: ['taller', 'esperando_confirmacion'],
+  listos: ['listo_para_facturar'],
+  entregar: ['facturado', 'rechazado'],
+  entregados: ['entregado'],
 }
+const ESTADO_ITEM_TAB = { taller: 'taller', pendientes: 'pendiente' }
+
+const rpc = async (fn, args) => {
+  const { error } = await sb.rpc(fn, args)
+  if (error) throw error
+}
+const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : '')
+const dm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '')
+// "$ 15.000,00 + 2,5 g oro 18k"
+const textoPago = (x) => [x.pago != null ? hechura(x.pago, x.pago_moneda) : null, x.pago_oro18 != null ? gramos(x.pago_oro18) + ' oro 18k' : null].filter(Boolean).join(' + ')
+const nombreItem = (it, total) => (total > 1 ? `Ítem ${it.numero}` : 'Trabajo') + (it.descripcion ? ': ' + it.descripcion : '')
 
 export default function Sobres({ params }) {
   const tab = PESTANAS.find((p) => p[0] === params.get('tab')) || PESTANAS[0]
@@ -30,7 +39,7 @@ export default function Sobres({ params }) {
   const [listas, setListas] = useState({ clientes: [], talleristas: [] })
   const [buscar, setBuscar] = useState('')
   const [filtroTall, setFiltroTall] = useState('')
-  const [detalle, setDetalle] = useState(null)
+  const [detalleId, setDetalleId] = useState(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
   const [marcados, setMarcados] = useState([])
@@ -38,28 +47,35 @@ export default function Sobres({ params }) {
   const cargar = useCallback(async () => {
     setCargando(true)
     let q = sb.from('vista_trabajos').select('*').order('ingresado_en', { ascending: false })
-    if (tab[2]) q = q.in('estado', tab[2])
+    if (ESTADOS_SOBRE[tab[0]]) q = q.in('estado', ESTADOS_SOBRE[tab[0]])
     if (tab[0] === 'entregados' || tab[0] === 'todos') q = q.limit(300)
-    const [{ data, error }, { data: est }] = await Promise.all([
-      q, sb.from('trabajos').select('estado').neq('estado', 'entregado'),
+    const [{ data, error }, { data: itemsActivos }, { data: listos }] = await Promise.all([
+      tab[0] === 'talleristas' ? Promise.resolve({ data: [] }) : q,
+      sb.from('items').select('trabajo_id,estado').in('estado', ['taller', 'pendiente']),
+      sb.from('trabajos').select('id').eq('estado', 'listo_para_facturar'),
     ])
     if (error) setError(errorMsg(error))
-    // Recorrido de talleres de cada sobre
     const ids = (data || []).map((t) => t.id)
-    const rec = {}
+    const porTrabajo = {}
     if (ids.length) {
-      const { data: tr } = await sb.from('traspasos_taller').select('id,trabajo_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id')
-      ;(tr || []).forEach((x) => { (rec[x.trabajo_id] ||= []).push(x) })
+      const [{ data: its }, { data: tr }] = await Promise.all([
+        sb.from('items').select('*, talleristas(nombre)').in('trabajo_id', ids).order('numero'),
+        sb.from('traspasos_taller').select('id,item_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id'),
+      ])
+      const rec = {}
+      ;(tr || []).forEach((x) => { (rec[x.item_id] ||= []).push(x) })
+      ;(its || []).forEach((it) => { (porTrabajo[it.trabajo_id] ||= []).push({ ...it, tallerista: it.talleristas?.nombre, talleres: rec[it.id] || [] }) })
     }
-    setTrabajos((data || []).map((t) => ({ ...t, talleres: rec[t.id] || [] })))
-    const c = {}
-    ;(est || []).forEach((r) => { c[r.estado] = (c[r.estado] || 0) + 1 })
-    setConteo(c)
+    setTrabajos((data || []).map((t) => ({ ...t, items: porTrabajo[t.id] || [] })))
+    // Contadores de las pestañas
+    const enTaller = new Set(), pend = new Set()
+    ;(itemsActivos || []).forEach((i) => (i.estado === 'taller' ? enTaller : pend).add(i.trabajo_id))
+    setConteo({ taller: enTaller.size, pendientes: pend.size, listos: (listos || []).length })
     setCargando(false)
   }, [tab[0]]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const recargarListas = () => cargarListas().then(setListas)
-  useEffect(() => { cargar(); setMarcados([]); setDetalle(null) }, [cargar])
+  useEffect(() => { cargar(); setMarcados([]); setDetalleId(null) }, [cargar])
   useEffect(() => { recargarListas() }, [])
 
   async function accion(fn) {
@@ -67,12 +83,12 @@ export default function Sobres({ params }) {
     try { await fn(); await cargar(); recargarListas() } catch (e) { setError(errorMsg(e)) }
   }
 
-  // Ventana de confirmación con "Sí" / "No"
+  // Ventana de confirmación "Sí" / "No"
   const [confirmacion, setConfirmacion] = useState(null)
   const preguntar = (texto) => new Promise((resolve) => setConfirmacion({ texto, resolve }))
   const responderConf = (si) => { confirmacion.resolve(si); setConfirmacion(null) }
 
-  // Cuánto se le pagó al tallerista
+  // Cuánto se le pagó al tallerista (solo registro)
   const [pago, setPago] = useState(null)
   const preguntarPago = (texto) => new Promise((resolve) => setPago({ texto, resolve, monto: '', moneda: 'ARS', oro: '', error: '' }))
   function responderPago(ok) {
@@ -83,55 +99,62 @@ export default function Sobres({ params }) {
     pago.resolve({ monto: m, moneda: pago.moneda, oro: o }); setPago(null)
   }
 
-  // Lista para elegir a qué tallerista vuelve un sobre
+  // Elegir tallerista de una lista
   const [eleccion, setEleccion] = useState(null)
   const elegirTallerista = (texto) => new Promise((resolve) => setEleccion({ texto, resolve }))
   const responderElec = (t) => { eleccion.resolve(t); setEleccion(null) }
 
+  const estadoItemTab = ESTADO_ITEM_TAB[tab[0]]
   const b = tab[0] === 'todos' ? buscar.trim().toLowerCase() : ''
   const visibles = trabajos.filter((t) =>
-    (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || (t.descripcion || '').toLowerCase().includes(b)) &&
-    (!filtroTall || String(t.tallerista_id) === filtroTall || (filtroTall === 'sin' && !t.tallerista_id)))
+    (!estadoItemTab || t.items.some((i) => i.estado === estadoItemTab)) &&
+    (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || t.items.some((i) => (i.descripcion || '').toLowerCase().includes(b))) &&
+    (!filtroTall || t.items.some((i) => (filtroTall === 'sin' ? !i.tallerista_id : String(i.tallerista_id) === filtroTall) && (tab[0] !== 'taller' || i.estado === 'taller'))))
 
   const activos = listas.talleristas.filter((x) => x.activo)
   const marcar = (id, si) => setMarcados((m) => (si ? [...m, id] : m.filter((x) => x !== id)))
+  const textoElegidos = (n) => (n === 1 ? 'el sobre elegido' : `los ${n} sobres elegidos`)
 
   async function facturarMarcados() {
-    if (!(await preguntar(`¿Estás seguro de facturar ${marcados.length === 1 ? 'el sobre elegido' : `los ${marcados.length} sobres elegidos`}?`))) return
+    if (!(await preguntar(`¿Estás seguro de facturar ${textoElegidos(marcados.length)}?`))) return
     ir('facturacion', { sobres: marcados.join(',') })
   }
 
   async function devolverMarcados() {
     const tall = await elegirTallerista(`¿A qué tallerista ${marcados.length === 1 ? 'vuelve el sobre elegido' : `vuelven los ${marcados.length} sobres elegidos`}?`)
     if (!tall) return
-    if (!(await preguntar(`¿Estás seguro de devolver ${marcados.length === 1 ? 'el sobre elegido' : `los ${marcados.length} sobres elegidos`} al taller de ${tall.nombre}?`))) return
-    accion(() => devolverATaller(marcados, tall.id))
+    if (!(await preguntar(`¿Estás seguro de devolver ${textoElegidos(marcados.length)} al taller de ${tall.nombre}?`))) return
+    accion(async () => {
+      for (const t of trabajos.filter((x) => marcados.includes(x.id))) {
+        for (const it of t.items.filter((i) => i.estado === 'listo')) await rpc('devolver_item', { p_item: it.id, p_tallerista: tall.id })
+      }
+    })
   }
 
-  const cuenta = (estados) => (estados ? estados.reduce((s, e) => s + (conteo[e] || 0), 0) : null)
+  const ctx = { talleristas: listas.talleristas, accion, preguntar, preguntarPago, elegirTallerista }
+  const detalle = trabajos.find((t) => t.id === detalleId)
 
   return (
     <section>
       <div className="pestanas">
-        {PESTANAS.map(([k, t, est]) => {
-          const n = k === 'entregados' || k === 'todos' || k === 'talleristas' ? null : cuenta(est)
-          return (
-            <a key={k} href={'#/sobres?tab=' + k} className={tab[0] === k ? 'activo' : ''}>
-              {t}{n ? <span className="contador">{n}</span> : null}
-            </a>
-          )
-        })}
+        {PESTANAS.map(([k, t]) => (
+          <a key={k} href={'#/sobres?tab=' + k} className={tab[0] === k ? 'activo' : ''}>
+            {t}{conteo[k] ? <span className="contador">{conteo[k]}</span> : null}
+          </a>
+        ))}
       </div>
-      <div className="filtros">
-        {tab[0] === 'todos' && <input placeholder="Buscar por sobre, cliente o descripción" value={buscar} onChange={(e) => setBuscar(e.target.value)} />}
-        {(tab[0] === 'taller' || tab[0] === 'todos') && (
-          <select value={filtroTall} onChange={(e) => setFiltroTall(e.target.value)}>
-            <option value="">Todos los talleristas</option>
-            <option value="sin">Sin tallerista</option>
-            {listas.talleristas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-          </select>
-        )}
-      </div>
+      {tab[0] !== 'talleristas' && (
+        <div className="filtros">
+          {tab[0] === 'todos' && <input placeholder="Buscar por sobre, cliente o descripción" value={buscar} onChange={(e) => setBuscar(e.target.value)} />}
+          {(tab[0] === 'taller' || tab[0] === 'todos') && (
+            <select value={filtroTall} onChange={(e) => setFiltroTall(e.target.value)}>
+              <option value="">Todos los talleristas</option>
+              <option value="sin">Sin tallerista</option>
+              {listas.talleristas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+            </select>
+          )}
+        </div>
+      )}
       {tab[0] === 'listos' && visibles.length > 0 && (
         <div className="barra-lote card">
           <label className="todos-check">
@@ -144,17 +167,17 @@ export default function Sobres({ params }) {
       )}
       {error && <div className="error">{error}</div>}
       {tab[0] === 'talleristas' ? (
-        <ResumenTalleristas abrir={(id) => setDetalle(trabajos.find((t) => t.id === id) || null)} />
+        <ResumenTalleristas abrir={(id) => setDetalleId(id)} />
       ) : cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
         <div className="lista">
           {visibles.map((t) => (
-            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} preguntar={preguntar} preguntarPago={preguntarPago} abrir={() => setDetalle(t)}
+            <Tarjeta key={t.id} t={t} ctx={ctx} enfocar={estadoItemTab} abrir={() => setDetalleId(t.id)}
               marcado={tab[0] === 'listos' ? marcados.includes(t.id) : null} marcar={(si) => marcar(t.id, si)} />
           ))}
         </div>
       )}
-      {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} preguntar={preguntar} elegirTallerista={elegirTallerista}
-        accion={async (fn) => { await accion(fn); setDetalle(null) }} />}
+      {detalleId && <DetalleCargado id={detalleId} t={detalle} ctx={ctx} recargar={cargar} cerrar={() => setDetalleId(null)} />}
+
       {pago && (
         <div className="modal-fondo centrado" onClick={() => responderPago(false)}>
           <form className="modal card confirmar" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); responderPago(true) }}>
@@ -206,11 +229,11 @@ export default function Sobres({ params }) {
   )
 }
 
-function Recorrido({ t }) {
-  const lista = t.talleres || []
-  const enTaller = t.estado === 'taller'
-  // En taller con un solo tallerista: el nombre ya está arriba
-  if (!lista.length || (enTaller && lista.length === 1)) return null
+// ---------- Recorrido de talleres de un ítem: verde = está ahí ahora, gris = ya salió ----------
+function Recorrido({ it, siempre }) {
+  const lista = it.talleres || []
+  const enTaller = it.estado === 'taller'
+  if (!lista.length || (!siempre && enTaller && lista.length === 1)) return null
   return (
     <div className="recorrido">
       {lista.map((x, i) => {
@@ -218,9 +241,7 @@ function Recorrido({ t }) {
         return (
           <span key={x.id} className="paso-envoltura">
             {i > 0 && <span className="flecha">→</span>}
-            <span className={'paso ' + (actual ? 'actual' : 'pasado')}>
-              {x.talleristas?.nombre} <small>{x.fecha.slice(8, 10)}/{x.fecha.slice(5, 7)}</small>
-            </span>
+            <span className={'paso ' + (actual ? 'actual' : 'pasado')}>{x.talleristas?.nombre} <small>{dm(x.fecha)}</small></span>
           </span>
         )
       })}
@@ -228,32 +249,165 @@ function Recorrido({ t }) {
   )
 }
 
-const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : '')
-// "$ 15.000,00 + 2,5 g oro 18k"
-const textoPago = (x) => [x.pago != null ? hechura(x.pago, x.pago_moneda) : null, x.pago_oro18 != null ? gramos(x.pago_oro18) + ' oro 18k' : null].filter(Boolean).join(' + ')
+// ---------- Chip de estado del sobre ----------
+function ChipSobre({ t }) {
+  const its = t.items || []
+  if (t.estado === 'taller' || t.estado === 'esperando_confirmacion') {
+    const nT = its.filter((i) => i.estado === 'taller').length
+    const nP = its.filter((i) => i.estado === 'pendiente').length
+    if (its.length === 1 && nT === 1) return its[0].tallerista ? <span className="chip tallerista-actual">{its[0].tallerista}</span> : <span className="chip est-taller">Sin tallerista</span>
+    if (its.length > 1) {
+      return (
+        <span className="chips">
+          {nT > 0 && <span className="chip est-taller">{nT} en taller</span>}
+          {nP > 0 && <span className="chip est-esperando_confirmacion">{nP} pendiente{nP > 1 ? 's' : ''}</span>}
+        </span>
+      )
+    }
+  }
+  return <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>
+}
 
+// ---------- Tarjeta de un sobre en Inicio ----------
+function Tarjeta({ t, ctx, enfocar, abrir, marcado, marcar }) {
+  const upd = async (campos) => {
+    const { error } = await sb.from('trabajos').update(campos).eq('id', t.id)
+    if (error) throw error
+  }
+  return (
+    <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')}>
+      <div className="sobre-cab" onClick={abrir} role="button">
+        {marcado !== null && marcado !== undefined && (
+          <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
+        )}
+        <div className="sobre-titulo">
+          <div className="nro">Sobre {t.nro_sobre}</div>
+          <div className="cliente">{t.cliente}</div>
+        </div>
+        <ChipSobre t={t} />
+      </div>
+      <div className="meta clic" onClick={abrir}>{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}{t.items.length > 1 ? ` · ${t.items.length} ítems` : ''}</div>
+
+      <div className="items-sobre">
+        {t.items.map((it) => (
+          <ItemFila key={it.id} it={it} total={t.items.length} t={t} ctx={ctx} apagado={enfocar && it.estado !== enfocar} />
+        ))}
+      </div>
+
+      {t.estado === 'facturado' && (
+        <div className="meta">Facturado {fecha(t.facturado_en)} · {hechura(t.hechura, t.hechura_moneda)} · {METALES[t.metal] || ''} {t.peso_fino != null ? gramos(t.peso_fino) + ' fino' : ''}</div>
+      )}
+      {(t.estado === 'facturado' || t.estado === 'rechazado') && (
+        <div className="acciones">
+          <button className="btn primario" onClick={async () => (await ctx.preguntar(`¿Confirmás que entregaste el sobre ${t.nro_sobre}?`)) && ctx.accion(() => upd({ estado: 'entregado' }))}>Entregado</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Un ítem dentro de la tarjeta, con sus acciones ----------
+function ItemFila({ it, total, t, ctx, apagado }) {
+  const opciones = ctx.talleristas.filter((x) => x.activo && x.id !== it.tallerista_id)
+  const [cambiando, setCambiando] = useState(false)
+  const [destino, setDestino] = useState('')
+  const [otro, setOtro] = useState('')
+  const elegido = destino || (opciones[0] ? String(opciones[0].id) : 'otro')
+  const quien = total > 1 ? `el ítem ${it.numero} del sobre ${t.nro_sobre}` : `el sobre ${t.nro_sobre}`
+  const ultimo = (it.talleres || []).at(-1)
+
+  async function cambiarTaller() {
+    const nombre = elegido === 'otro' ? otro.trim() : opciones.find((x) => String(x.id) === elegido)?.nombre
+    if (!nombre) return ctx.accion(async () => { throw new Error('Escribí el nombre del tallerista.') })
+    const texto = it.tallerista ? `¿Estás seguro de pasar ${quien} de ${it.tallerista} a ${nombre}?` : `¿Estás seguro de pasar ${quien} a ${nombre}?`
+    if (!(await ctx.preguntar(texto))) return
+    ctx.accion(async () => {
+      const id = elegido === 'otro' ? await resolverTallerista(nombre, ctx.talleristas) : Number(elegido)
+      await rpc('asignar_tallerista_item', { p_item: it.id, p_tallerista: id })
+      setDestino(''); setOtro(''); setCambiando(false)
+    })
+  }
+
+  async function listo() {
+    const p = await ctx.preguntarPago(`${total > 1 ? `Ítem ${it.numero} del sobre ${t.nro_sobre}` : `Sobre ${t.nro_sobre}`} listo. ¿Cuánto le pagaste${it.tallerista ? ' a ' + it.tallerista : ''} por este trabajo?`)
+    if (!p) return
+    ctx.accion(() => rpc('marcar_item_listo', { p_item: it.id, p_pago: p.monto, p_moneda: p.moneda, p_oro18: p.oro }))
+  }
+
+  const responder = async (aceptado) => {
+    if (!aceptado && !(await ctx.preguntar(`¿Marcar el presupuesto de ${quien} como rechazado?`))) return
+    ctx.accion(() => rpc('responder_item', { p_item: it.id, p_aceptado: aceptado }))
+  }
+
+  return (
+    <div className={'item-fila item-' + it.estado + (apagado ? ' apagado' : '')}>
+      <div className="item-linea">
+        <div className="item-desc">{nombreItem(it, total)}</div>
+        {it.estado === 'taller' && total > 1 && (it.tallerista ? <span className="chip tallerista-actual">{it.tallerista}</span> : <span className="chip est-taller">Sin tallerista</span>)}
+        {it.estado === 'pendiente' && total > 1 && <span className="chip est-esperando_confirmacion">Pendiente</span>}
+        {it.estado === 'listo' && total > 1 && t.estado !== 'facturado' && t.estado !== 'entregado' && <span className="chip est-listo_para_facturar">Listo</span>}
+        {it.estado === 'rechazado' && <span className="chip est-rechazado">Rechazado</span>}
+      </div>
+      <Recorrido it={it} siempre={total > 1 && it.estado !== 'taller'} />
+      {it.presupuesto_hechura != null && it.estado === 'pendiente' && (
+        <div className="meta">Presupuesto: {hechura(it.presupuesto_hechura, it.presupuesto_moneda)} · {METALES[it.presupuesto_metal] || '—'}{it.presupuesto_peso != null ? ' ' + gramos(it.presupuesto_peso) : ''}{it.tallerista ? ' · ' + it.tallerista : ''}</div>
+      )}
+      {it.estado === 'listo' && t.estado === 'listo_para_facturar' && (ultimo?.pago != null || ultimo?.pago_oro18 != null) && (
+        <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{textoPago(ultimo)}</b></div>
+      )}
+
+      {!apagado && it.estado === 'pendiente' && (
+        <div className="acciones">
+          <button className="btn ok" onClick={() => responder(true)}>Aceptado</button>
+          <button className="btn peligro" onClick={() => responder(false)}>Rechazado</button>
+        </div>
+      )}
+      {!apagado && it.estado === 'taller' && (
+        <div className="acciones-taller">
+          {!cambiando ? (
+            <button className="btn" onClick={() => setCambiando(true)}>{it.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
+          ) : (
+            <div className="cambio-taller">
+              <select value={elegido} onChange={(e) => setDestino(e.target.value)} aria-label="Tallerista" autoFocus>
+                {opciones.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                <option value="otro">Otro…</option>
+              </select>
+              {elegido === 'otro' && <input value={otro} onChange={(e) => setOtro(e.target.value)} placeholder="Nombre" autoFocus />}
+              <button className="btn primario" onClick={cambiarTaller}>Aceptar</button>
+              <button className="btn suave" onClick={() => { setCambiando(false); setDestino(''); setOtro('') }}>Cancelar</button>
+            </div>
+          )}
+          <button className="btn ok" onClick={listo}>Listo para facturar</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Pestaña Talleristas ----------
 function ResumenTalleristas({ abrir }) {
   const [filas, setFilas] = useState(null)
   const [abierto, setAbierto] = useState({})
 
   useEffect(() => {
     sb.from('traspasos_taller')
-      .select('id,fecha,hasta,pago,pago_moneda,pago_oro18,tallerista_id,talleristas(nombre),trabajos(id,nro_sobre,descripcion,estado,clientes(nombre))')
+      .select('id,fecha,hasta,pago,pago_moneda,pago_oro18,tallerista_id,talleristas(nombre),items(numero,descripcion,estado),trabajos(id,nro_sobre,clientes(nombre))')
       .order('fecha', { ascending: false }).order('id', { ascending: false }).limit(1000)
       .then(({ data }) => setFilas(data || []))
   }, [])
 
   if (!filas) return <div className="vacio">Cargando…</div>
-  if (!filas.length) return <div className="vacio">Todavía no hay sobres entregados a talleristas.</div>
+  if (!filas.length) return <div className="vacio">Todavía no hay trabajos entregados a talleristas.</div>
 
   const grupos = {}
   filas.forEach((x) => { const n = x.talleristas?.nombre || '—'; (grupos[n] ||= []).push(x) })
   const nombres = Object.keys(grupos).sort((a, b) => a.localeCompare(b))
+  const sobre = (x) => x.trabajos?.nro_sobre + (x.items && x.items.numero > 1 ? `-${x.items.numero}` : '')
 
   return (
     <div className="resumen-talleristas">
       {nombres.map((n) => {
-        const actuales = grupos[n].filter((x) => !x.hasta && x.trabajos?.estado === 'taller')
+        const actuales = grupos[n].filter((x) => !x.hasta && x.items?.estado === 'taller')
         const terminados = grupos[n].filter((x) => x.hasta)
         const total = (m) => terminados.filter((x) => x.pago != null && x.pago_moneda === m).reduce((s, x) => s + Number(x.pago), 0)
         const totalOro = terminados.reduce((s, x) => s + Number(x.pago_oro18 || 0), 0)
@@ -261,20 +415,18 @@ function ResumenTalleristas({ abrir }) {
         return (
           <div key={n} className="card grupo-tallerista">
             <div className="grupo-cab"><b>{n}</b><span className="meta">{actuales.length} en su taller</span></div>
-
             {actuales.length > 0 && (
               <table className="tabla compacta">
                 <thead><tr><th>Sobre</th><th>Cliente</th><th>Trabajo</th><th className="d">Entregado</th></tr></thead>
                 <tbody>
                   {actuales.map((x) => (
                     <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
-                      <td><b>{x.trabajos.nro_sobre}</b></td><td>{x.trabajos.clientes?.nombre}</td><td className="meta">{x.trabajos.descripcion}</td><td className="d">{dma(x.fecha)}</td>
+                      <td><b>{sobre(x)}</b></td><td>{x.trabajos?.clientes?.nombre}</td><td className="meta">{x.items?.descripcion}</td><td className="d">{dma(x.fecha)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
-
             {terminados.length > 0 && (
               <>
                 <h4 className="sub">Trabajos que ya salieron</h4>
@@ -282,8 +434,8 @@ function ResumenTalleristas({ abrir }) {
                   <thead><tr><th>Sobre</th><th className="d">Entregado</th><th className="d">Salió</th><th className="d">Pagado</th></tr></thead>
                   <tbody>
                     {(verTodos ? terminados : terminados.slice(0, 8)).map((x) => (
-                      <tr key={x.id}>
-                        <td><b>{x.trabajos?.nro_sobre}</b> <span className="meta">{x.trabajos?.clientes?.nombre}</span></td>
+                      <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
+                        <td><b>{sobre(x)}</b> <span className="meta">{x.items?.descripcion || x.trabajos?.clientes?.nombre}</span></td>
                         <td className="d">{dma(x.fecha)}</td><td className="d">{dma(x.hasta)}</td>
                         <td className="d">{x.pago == null && x.pago_oro18 == null ? <span className="meta">Pasó a otro taller</span> : textoPago(x)}</td>
                       </tr>
@@ -310,249 +462,80 @@ function ResumenTalleristas({ abrir }) {
   )
 }
 
-function Tarjeta({ t, talleristas, accion, preguntar, preguntarPago, abrir, marcado, marcar }) {
-  const opciones = talleristas.filter((x) => x.activo && x.id !== t.tallerista_id)
-  const [cambiando, setCambiando] = useState(false)
-  const [destino, setDestino] = useState('')
-  const [otro, setOtro] = useState('')
-  const elegido = destino || (opciones[0] ? String(opciones[0].id) : 'otro')
-
-  const upd = async (campos) => {
-    const { error } = await sb.from('trabajos').update(campos).eq('id', t.id)
-    if (error) throw error
-  }
-
-  const responder = (aceptado) => accion(async () => {
-    const { error } = await sb.rpc('responder_presupuesto', { p_trabajo: t.id, p_aceptado: aceptado })
-    if (error) throw error
-  })
-
-  async function cambiarTaller() {
-    const nombre = elegido === 'otro' ? otro.trim() : opciones.find((x) => String(x.id) === elegido)?.nombre
-    if (!nombre) return accion(async () => { throw new Error('Escribí el nombre del tallerista.') })
-    const texto = t.tallerista
-      ? `¿Estás seguro de pasar el sobre ${t.nro_sobre} de ${t.tallerista} a ${nombre}?`
-      : `¿Estás seguro de pasar el sobre ${t.nro_sobre} a ${nombre}?`
-    if (!(await preguntar(texto))) return
-    accion(async () => {
-      const id = elegido === 'otro' ? await resolverTallerista(nombre, talleristas) : Number(elegido)
-      const { error } = await sb.rpc('asignar_tallerista', { p_trabajo: t.id, p_tallerista: id })
-      if (error) throw error
-      setDestino(''); setOtro(''); setCambiando(false)
-    })
-  }
-
-  async function listo() {
-    const p = await preguntarPago(`Sobre ${t.nro_sobre} listo para facturar. ¿Cuánto le pagaste${t.tallerista ? ' a ' + t.tallerista : ''} por este trabajo?`)
-    if (!p) return
-    accion(async () => {
-      const { error } = await sb.rpc('marcar_listo', { p_trabajo: t.id, p_pago: p.monto, p_moneda: p.moneda, p_oro18: p.oro })
-      if (error) throw error
-    })
-  }
-  const ultimo = (t.talleres || []).at(-1)
-
-  return (
-    <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')}>
-      <div className="sobre-cab" onClick={abrir} role="button">
-        {marcado !== null && marcado !== undefined && (
-          <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
-        )}
-        <div className="sobre-titulo">
-          <div className="nro">Sobre {t.nro_sobre}</div>
-          <div className="cliente">{t.cliente}</div>
-        </div>
-        {t.estado === 'taller'
-          ? (t.tallerista ? <span className="chip tallerista-actual">{t.tallerista}</span> : <span className="chip est-taller">Sin tallerista</span>)
-          : <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>}
-      </div>
-      <div className="sobre-cuerpo" onClick={abrir} role="button">
-        <div className="meta">{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}</div>
-        <Recorrido t={t} />
-        {t.descripcion && <div className="desc">{t.descripcion}</div>}
-        {t.presupuesto_hechura != null && (
-          <div className="meta">Presupuesto: {hechura(t.presupuesto_hechura, t.presupuesto_moneda)} · {METALES[t.presupuesto_metal] || '—'}
-            {t.presupuesto_peso != null ? ' ' + gramos(t.presupuesto_peso) : ''}
-            {t.presupuesto_respuesta ? ' · ' + (t.presupuesto_respuesta === 'aceptado' ? 'Aceptado' : 'Rechazado') : ''}</div>
-        )}
-        {t.estado === 'facturado' && (
-          <div className="meta">Facturado {fecha(t.facturado_en)} · {hechura(t.hechura, t.hechura_moneda)} · {METALES[t.metal] || ''} {t.peso_fino != null ? gramos(t.peso_fino) + ' fino' : ''}</div>
-        )}
-        {t.estado === 'listo_para_facturar' && (ultimo?.pago != null || ultimo?.pago_oro18 != null) && (
-          <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{textoPago(ultimo)}</b></div>
-        )}
-        {t.foto_path && <div className="meta">📷 Tiene foto</div>}
-      </div>
-
-      <div className="acciones">
-        {t.estado === 'esperando_confirmacion' && (
-          <>
-            <button className="btn ok" onClick={() => responder(true)}>Aceptado</button>
-            <button className="btn peligro" onClick={() => window.confirm(`¿Marcar el presupuesto del sobre ${t.nro_sobre} como rechazado? Pasa a Listo para facturar.`) && responder(false)}>Rechazado</button>
-          </>
-        )}
-        {t.estado === 'taller' && (
-          <div className="acciones-taller">
-            {!cambiando ? (
-              <button className="btn" onClick={() => setCambiando(true)}>{t.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
-            ) : (
-              <div className="cambio-taller">
-                <select value={elegido} onChange={(e) => setDestino(e.target.value)} aria-label="Tallerista" autoFocus>
-                  {opciones.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-                  <option value="otro">Otro…</option>
-                </select>
-                {elegido === 'otro' && <input value={otro} onChange={(e) => setOtro(e.target.value)} placeholder="Nombre" autoFocus />}
-                <button className="btn primario" onClick={cambiarTaller}>Aceptar</button>
-                <button className="btn suave" onClick={() => { setCambiando(false); setDestino(''); setOtro('') }}>Cancelar</button>
-              </div>
-            )}
-            <button className="btn ok" onClick={listo}>Listo para facturar</button>
-          </div>
-        )}
-        {(t.estado === 'facturado' || t.estado === 'rechazado') && (
-          <button className="btn primario" onClick={() => window.confirm(`¿Confirmás que entregaste el sobre ${t.nro_sobre}?`) && accion(() => upd({ estado: 'entregado' }))}>Entregado</button>
-        )}
-      </div>
-    </div>
-  )
+// ---------- Detalle de un sobre (con sus ítems) ----------
+// Si el sobre no está en la lista cargada (p. ej. desde Talleristas), lo trae.
+function DetalleCargado({ id, t, ctx, recargar, cerrar }) {
+  const [sobre, setSobre] = useState(t || null)
+  const [items, setItems] = useState(t?.items || null)
+  const cargar = useCallback(async () => {
+    const [{ data: s }, { data: its }, { data: tr }] = await Promise.all([
+      sb.from('vista_trabajos').select('*').eq('id', id).single(),
+      sb.from('items').select('*, talleristas(nombre)').eq('trabajo_id', id).order('numero'),
+      sb.from('traspasos_taller').select('id,item_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').eq('trabajo_id', id).order('fecha').order('id'),
+    ])
+    const rec = {}
+    ;(tr || []).forEach((x) => { (rec[x.item_id] ||= []).push(x) })
+    setSobre(s)
+    setItems((its || []).map((it) => ({ ...it, tallerista: it.talleristas?.nombre, talleres: rec[it.id] || [] })))
+  }, [id])
+  useEffect(() => { cargar() }, [cargar])
+  if (!sobre || !items) return null
+  const refrescar = async () => { await cargar(); recargar() }
+  return <Detalle t={sobre} items={items} ctx={{ ...ctx, accion: async (fn) => { await ctx.accion(fn); await cargar() } }} recargar={refrescar} cerrar={cerrar} />
 }
 
-const aTexto = (v) => (v == null ? '' : String(v).replace('.', ','))
-
-function Detalle({ t, cerrar, recargar, preguntar, elegirTallerista, accion }) {
-  async function devolver() {
-    const tall = await elegirTallerista(`¿A qué tallerista vuelve el sobre ${t.nro_sobre}?`)
-    if (!tall) return
-    if (!(await preguntar(`¿Estás seguro de devolver el sobre ${t.nro_sobre} al taller de ${tall.nombre}?`))) return
-    accion(() => devolverATaller([t.id], tall.id))
-  }
-
-  // Fotos: la principal (foto_path) + las agregadas
-  const [principal, setPrincipal] = useState(t.foto_path)
-  const [fotos, setFotos] = useState([]) // [{ key, url }]
-  const [verFoto, setVerFoto] = useState(0)
+function Detalle({ t, items, ctx, recargar, cerrar }) {
   const [hist, setHist] = useState([])
-  const [talleres, setTalleres] = useState([])
-  const [desc, setDesc] = useState(t.descripcion || '')
-  const [pres, setPres] = useState({ hechura: aTexto(t.presupuesto_hechura), moneda: t.presupuesto_moneda || 'ARS', metal: t.presupuesto_metal || 'oro', peso: aTexto(t.presupuesto_peso) })
-  const [msg, setMsg] = useState('')
-  const [subiendo, setSubiendo] = useState(false)
-
-  const cargarFotos = useCallback(async (ppal) => {
-    const { data } = await sb.from('trabajo_fotos').select('id,path').eq('trabajo_id', t.id).order('id')
-    const paths = [ppal, ...(data || []).map((x) => x.path)].filter(Boolean)
-    setFotos(await Promise.all(paths.map(async (p) => ({ key: p, url: await fotoUrl(p) }))))
-  }, [t.id])
+  const [nuevo, setNuevo] = useState(null)
+  const editable = !['facturado', 'entregado'].includes(t.estado)
 
   useEffect(() => {
-    cargarFotos(t.foto_path)
     sb.from('historial_estados').select('*').eq('trabajo_id', t.id).order('cambiado_en').then(({ data }) => setHist(data || []))
-    sb.from('traspasos_taller').select('id,fecha,talleristas(nombre)').eq('trabajo_id', t.id).order('fecha').order('id').then(({ data }) => setTalleres(data || []))
-  }, [t.id, t.foto_path, cargarFotos])
+  }, [t.id, t.estado])
 
-  async function guardarDesc() {
-    const { error } = await sb.from('trabajos').update({ descripcion: desc.trim() || null }).eq('id', t.id)
-    setMsg(error ? errorMsg(error) : 'Descripción guardada.')
-    recargar()
+  async function agregarItem() {
+    const tallId = await resolverTallerista(nuevo.tallerista, ctx.talleristas)
+    await ctx.accion(() => rpc('agregar_item', { p_trabajo: t.id, p_descripcion: nuevo.descripcion, p_tallerista: tallId }))
+    setNuevo(null)
   }
 
-  async function guardarPres() {
-    const h = num(pres.hechura), p = num(pres.peso)
-    if (h === null || Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
-    const { error } = await sb.from('trabajos').update({ presupuesto_hechura: h, presupuesto_moneda: pres.moneda, presupuesto_metal: pres.metal, presupuesto_peso: p }).eq('id', t.id)
-    setMsg(error ? errorMsg(error) : 'Presupuesto actualizado.')
-    recargar()
-  }
-
-  // cambiar = reemplaza la foto principal · agregar = suma otra foto
-  async function nuevaFoto(e, modo) {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    setSubiendo(true)
-    try {
-      if (modo === 'cambiar' || !principal) {
-        const p = await subirFoto(t.id, f)
-        setPrincipal(p)
-        await cargarFotos(p)
-        setVerFoto(0)
-        setMsg(modo === 'cambiar' ? 'Foto cambiada.' : 'Foto agregada.')
-      } else {
-        await agregarFoto(t.id, f)
-        await cargarFotos(principal)
-        setVerFoto(fotos.length)
-        setMsg('Foto agregada.')
-      }
-      recargar()
-    } catch (er) { setMsg(errorMsg(er)) }
-    setSubiendo(false)
-  }
-  const url = fotos[verFoto]?.url || fotos[0]?.url
-
-  // Estado con el nombre del tallerista al pasar a taller
   const ESTADO_H = { presupuesto: 'Presupuesto', esperando_confirmacion: 'Pendiente', rechazado: 'Rechazado', taller: 'En taller', listo_para_facturar: 'Listo para facturar', facturado: 'Facturado', entregado: 'Entregado' }
 
   return (
     <div className="modal-fondo" onClick={cerrar}>
-      <div className="modal card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal card detalle" onClick={(e) => e.stopPropagation()}>
         <button className="cerrar" onClick={cerrar} aria-label="Cerrar">×</button>
         <h2>Sobre {t.nro_sobre}</h2>
-        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · {t.estado === 'taller' && t.tallerista ? <span className="chip tallerista-actual">{t.tallerista}</span> : <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>}</div>
-        {url ? <img src={url} className="foto-grande" alt={'Sobre ' + t.nro_sobre} /> : <div className="sin-foto">Sin foto</div>}
-        {fotos.length > 1 && (
-          <div className="miniaturas">
-            {fotos.map((f, i) => (
-              <button key={f.key} className={'miniatura' + (i === verFoto ? ' sel' : '')} onClick={() => setVerFoto(i)}>
-                <img src={f.url} alt={'Foto ' + (i + 1)} />
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="botones-foto">
-          {principal && (
-            <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Cambiar foto'}
-              <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'cambiar')} hidden />
-            </label>
-          )}
-          <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Agregar foto'}
-            <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'agregar')} hidden />
-          </label>
-        </div>
-        <label>Descripción
-          <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
-        </label>
-        <button className="btn" onClick={guardarDesc}>Guardar descripción</button>
+        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <ChipSobre t={{ ...t, items }} /></div>
 
-        {t.estado === 'esperando_confirmacion' && (
-          <>
-            <h3>Presupuesto</h3>
-            <CamposPresupuesto v={pres} set={setPres} />
-            <button className="btn" onClick={guardarPres}>Guardar presupuesto</button>
-          </>
-        )}
-        {msg && <div className="ok">{msg}</div>}
+        {items.map((it) => (
+          <ItemDetalle key={it.id} it={it} t={t} total={items.length} ctx={ctx} recargar={recargar} />
+        ))}
+
+        {editable && (nuevo ? (
+          <div className="item-detalle nuevo">
+            <b>Nuevo ítem</b>
+            <label>Descripción<textarea rows={2} value={nuevo.descripcion} onChange={(e) => setNuevo({ ...nuevo, descripcion: e.target.value })} /></label>
+            <label>Tallerista
+              <input list="tall-nuevo-item" value={nuevo.tallerista} onChange={(e) => setNuevo({ ...nuevo, tallerista: e.target.value })} placeholder="Quién va a hacer el trabajo" />
+              <datalist id="tall-nuevo-item">{ctx.talleristas.filter((x) => x.activo).map((x) => <option key={x.id} value={x.nombre} />)}</datalist>
+            </label>
+            <div className="botones-par">
+              <button className="btn ok" onClick={agregarItem}>Agregar</button>
+              <button className="btn suave" onClick={() => setNuevo(null)}>Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn suave" onClick={() => setNuevo({ descripcion: '', tallerista: '' })}>+ Agregar ítem a este sobre</button>
+        ))}
 
         {t.estado === 'listo_para_facturar' && (
           <div className="acciones-detalle">
             <button className="btn ok" onClick={() => ir('facturacion', { sobres: t.id })}>Enviar a facturación</button>
-            <button className="btn" onClick={devolver}>Devolver a taller</button>
           </div>
         )}
 
-        {talleres.length > 0 && (
-          <>
-            <h3>Talleres</h3>
-            <table className="tabla compacta">
-              <tbody>
-                {talleres.map((x, i) => (
-                  <tr key={x.id}><td>{fechaCorta(x.fecha + 'T12:00')}</td><td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b className={t.estado === 'taller' && i === talleres.length - 1 ? 'nombre-actual' : 'nombre-pasado'}>{x.talleristas?.nombre}</b></td></tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        <h3>Historial</h3>
+        <h3>Historial del sobre</h3>
         <table className="tabla compacta">
           <tbody>
             {hist.map((h) => (
@@ -560,8 +543,132 @@ function Detalle({ t, cerrar, recargar, preguntar, elegirTallerista, accion }) {
             ))}
           </tbody>
         </table>
-        {t.metal && t.peso != null && <div className="meta">{etiquetaPeso(t.metal)}: {gramos(t.peso)}</div>}
       </div>
+    </div>
+  )
+}
+
+const aTexto = (v) => (v == null ? '' : String(v).replace('.', ','))
+
+function ItemDetalle({ it, t, total, ctx, recargar }) {
+  const [principal, setPrincipal] = useState(it.foto_path)
+  const [fotos, setFotos] = useState([])
+  const [verFoto, setVerFoto] = useState(0)
+  const [desc, setDesc] = useState(it.descripcion || '')
+  const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || 'oro', peso: aTexto(it.presupuesto_peso) })
+  const [msg, setMsg] = useState('')
+  const [subiendo, setSubiendo] = useState(false)
+
+  const cargarFotos = useCallback(async (ppal) => {
+    const { data } = await sb.from('trabajo_fotos').select('id,path').eq('item_id', it.id).order('id')
+    const paths = [ppal, ...(data || []).map((x) => x.path)].filter(Boolean)
+    setFotos(await Promise.all(paths.map(async (p) => ({ key: p, url: await fotoUrl(p) }))))
+  }, [it.id])
+  useEffect(() => { cargarFotos(it.foto_path) }, [it.foto_path, cargarFotos])
+
+  async function guardarDesc() {
+    const { error } = await sb.from('items').update({ descripcion: desc.trim() || null }).eq('id', it.id)
+    setMsg(error ? errorMsg(error) : 'Descripción guardada.')
+    recargar()
+  }
+
+  async function guardarPres() {
+    const h = num(pres.hechura), p = num(pres.peso)
+    if (h === null || Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
+    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: pres.moneda, presupuesto_metal: pres.metal, presupuesto_peso: p }).eq('id', it.id)
+    setMsg(error ? errorMsg(error) : 'Presupuesto actualizado.')
+    recargar()
+  }
+
+  // cambiar = reemplaza la foto principal · agregar = suma otra
+  async function nuevaFoto(e, modo) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setSubiendo(true)
+    try {
+      if (modo === 'cambiar' || !principal) {
+        const p = await subirFotoItem(it, f)
+        setPrincipal(p); await cargarFotos(p); setVerFoto(0)
+        setMsg(modo === 'cambiar' ? 'Foto cambiada.' : 'Foto agregada.')
+      } else {
+        await agregarFotoItem(it, f)
+        await cargarFotos(principal); setVerFoto(fotos.length)
+        setMsg('Foto agregada.')
+      }
+    } catch (er) { setMsg(errorMsg(er)) }
+    setSubiendo(false)
+  }
+
+  async function devolver() {
+    const quien = total > 1 ? `el ítem ${it.numero} del sobre ${t.nro_sobre}` : `el sobre ${t.nro_sobre}`
+    const tall = await ctx.elegirTallerista(`¿A qué tallerista vuelve ${quien}?`)
+    if (!tall) return
+    if (!(await ctx.preguntar(`¿Estás seguro de devolver ${quien} al taller de ${tall.nombre}?`))) return
+    ctx.accion(() => rpc('devolver_item', { p_item: it.id, p_tallerista: tall.id }))
+  }
+
+  const url = fotos[verFoto]?.url || fotos[0]?.url
+  const ESTADO_I = { pendiente: 'Pendiente', taller: it.tallerista ? it.tallerista : 'En taller', listo: 'Listo', rechazado: 'Presupuesto rechazado' }
+
+  return (
+    <div className="item-detalle">
+      <div className="item-cab">
+        <b>{total > 1 ? `Ítem ${it.numero}` : 'Trabajo'}</b>
+        <span className={'chip ' + (it.estado === 'taller' && it.tallerista ? 'tallerista-actual' : 'est-' + { pendiente: 'esperando_confirmacion', taller: 'taller', listo: 'listo_para_facturar', rechazado: 'rechazado' }[it.estado])}>{ESTADO_I[it.estado]}</span>
+      </div>
+      {url ? <img src={url} className="foto-grande" alt={'Ítem ' + it.numero} /> : <div className="sin-foto">Sin foto</div>}
+      {fotos.length > 1 && (
+        <div className="miniaturas">
+          {fotos.map((f, i) => (
+            <button key={f.key} className={'miniatura' + (i === verFoto ? ' sel' : '')} onClick={() => setVerFoto(i)}><img src={f.url} alt={'Foto ' + (i + 1)} /></button>
+          ))}
+        </div>
+      )}
+      <div className="botones-foto">
+        {principal && (
+          <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Cambiar foto'}
+            <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'cambiar')} hidden />
+          </label>
+        )}
+        <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Agregar foto'}
+          <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'agregar')} hidden />
+        </label>
+      </div>
+      <label>Descripción
+        <textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} />
+      </label>
+      <button className="btn" onClick={guardarDesc}>Guardar descripción</button>
+
+      {it.estado === 'pendiente' && (
+        <>
+          <h4 className="sub">Presupuesto</h4>
+          <CamposPresupuesto v={pres} set={setPres} />
+          <button className="btn" onClick={guardarPres}>Guardar presupuesto</button>
+        </>
+      )}
+      {msg && <div className="ok">{msg}</div>}
+
+      {it.talleres.length > 0 && (
+        <>
+          <h4 className="sub">Talleres</h4>
+          <table className="tabla compacta">
+            <tbody>
+              {it.talleres.map((x, i) => (
+                <tr key={x.id}>
+                  <td>{fechaCorta(x.fecha + 'T12:00')}</td>
+                  <td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b className={it.estado === 'taller' && i === it.talleres.length - 1 ? 'nombre-actual' : 'nombre-pasado'}>{x.talleristas?.nombre}</b></td>
+                  <td className="d meta">{(x.pago != null || x.pago_oro18 != null) ? 'Pagado: ' + textoPago(x) : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {it.estado === 'listo' && !['facturado', 'entregado'].includes(t.estado) && (
+        <button className="btn" onClick={devolver}>Devolver a taller</button>
+      )}
     </div>
   )
 }

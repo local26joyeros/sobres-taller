@@ -1,30 +1,28 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { sb, TIPOS, cargarListas, errorMsg, ir, num, resolverTallerista } from '../lib'
-import { subirFoto } from '../foto'
+import { subirFotoItem } from '../foto'
 import { CampoTallerista, CamposPresupuesto } from '../components'
 
-const presVacio = { hechura: '', moneda: 'ARS', metal: 'oro', peso: '' }
+let claveItem = 0
+const itemVacio = () => ({ clave: ++claveItem, descripcion: '', tallerista: '', foto: null, preview: null, pres: { hechura: '', moneda: 'ARS', metal: 'oro', peso: '' } })
 
 export default function Ingreso() {
   const [listas, setListas] = useState({ clientes: [], talleristas: [] })
   const [sobre, setSobre] = useState('')
   const [cliente, setCliente] = useState('')
   const [tipo, setTipo] = useState('taller')
-  const [desc, setDesc] = useState('')
-  const [tallerista, setTallerista] = useState('')
-  const [pres, setPres] = useState(presVacio)
-  const [foto, setFoto] = useState(null)
-  const [preview, setPreview] = useState(null)
+  const [items, setItems] = useState([itemVacio()])
   const [msg, setMsg] = useState(null)
   const [guardando, setGuardando] = useState(false)
-  const fileRef = useRef()
 
   useEffect(() => { cargarListas().then(setListas) }, [])
 
-  function elegirFoto(e) {
+  const cambiarItem = (clave, campos) => setItems((xs) => xs.map((x) => (x.clave === clave ? { ...x, ...campos } : x)))
+  const quitarItem = (clave) => setItems((xs) => xs.filter((x) => x.clave !== clave))
+
+  function elegirFoto(clave, e) {
     const f = e.target.files?.[0]
-    setFoto(f || null)
-    setPreview(f ? URL.createObjectURL(f) : null)
+    cambiarItem(clave, { foto: f || null, preview: f ? URL.createObjectURL(f) : null })
   }
 
   async function guardar(e) {
@@ -33,50 +31,48 @@ export default function Ingreso() {
     const nombre = cliente.trim()
     if (!nombre) return setMsg({ error: 'Elegí o escribí el cliente.' })
 
-    let campos = {}
-    if (tipo === 'presupuesto') {
-      const h = num(pres.hechura)
-      const p = num(pres.peso)
-      if (h === null || Number.isNaN(h)) return setMsg({ error: 'Cargá la hechura del presupuesto.' })
-      if (Number.isNaN(p)) return setMsg({ error: 'El peso no es un número válido.' })
-      campos = { presupuesto_hechura: h, presupuesto_moneda: pres.moneda, presupuesto_metal: pres.metal, presupuesto_peso: p }
+    // Validar presupuestos de cada ítem
+    const datos = []
+    for (const [i, it] of items.entries()) {
+      const d = { descripcion: it.descripcion.trim() }
+      if (tipo === 'presupuesto') {
+        const h = num(it.pres.hechura), p = num(it.pres.peso)
+        if (h === null || Number.isNaN(h)) return setMsg({ error: `Cargá la hechura del ítem ${i + 1}.` })
+        if (Number.isNaN(p)) return setMsg({ error: `El peso del ítem ${i + 1} no es un número válido.` })
+        Object.assign(d, { presupuesto_hechura: h, presupuesto_moneda: it.pres.moneda, presupuesto_metal: it.pres.metal, presupuesto_peso: p })
+      }
+      datos.push(d)
     }
 
     setGuardando(true)
     try {
       let c = listas.clientes.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase())
       if (!c) {
-        if (!window.confirm(`"${nombre}" no está registrado. ¿Lo agrego como cliente nuevo?`)) {
-          setGuardando(false)
-          return
-        }
+        if (!window.confirm(`"${nombre}" no está registrado. ¿Lo agrego como cliente nuevo?`)) { setGuardando(false); return }
         const { data, error } = await sb.from('clientes').insert({ nombre }).select('id,nombre').single()
         if (error) throw error
         c = data
       }
-      const tallId = await resolverTallerista(tallerista, listas.talleristas)
-      const { data: t, error } = await sb
-        .from('trabajos')
-        .insert({
-          nro_sobre: sobre.trim(),
-          cliente_id: c.id,
-          tipo,
-          estado: tipo === 'presupuesto' ? 'esperando_confirmacion' : 'taller',
-          descripcion: desc.trim() || null,
-          tallerista_id: tallId,
-          ...campos,
-        })
-        .select('id,nro_sobre')
-        .single()
-      if (error) throw error
-      if (foto) {
-        try { await subirFoto(t.id, foto) } catch (e2) {
-          setMsg({ error: `El sobre ${t.nro_sobre} se guardó, pero la foto no se pudo subir: ${errorMsg(e2)}` })
-        }
+      // Talleristas (se crean si son nuevos)
+      let talls = listas.talleristas
+      for (const [i, it] of items.entries()) {
+        const id = await resolverTallerista(it.tallerista, talls)
+        if (id && !talls.some((x) => x.id === id)) talls = [...talls, { id, nombre: it.tallerista.trim(), activo: true }]
+        datos[i].tallerista_id = id
       }
-      setMsg((m) => m || { ok: `Sobre ${t.nro_sobre} ingresado para ${c.nombre}.` })
-      setSobre(''); setCliente(''); setDesc(''); setTallerista(''); setPres(presVacio); setFoto(null); setPreview(null)
-      if (fileRef.current) fileRef.current.value = ''
+      const { data: r, error } = await sb.rpc('crear_sobre', { p: { nro_sobre: sobre.trim(), cliente_id: c.id, tipo, items: datos } })
+      if (error) throw error
+
+      // Fotos de cada ítem
+      const fallas = []
+      for (const [i, it] of items.entries()) {
+        if (!it.foto) continue
+        try { await subirFotoItem({ id: r.items[i], trabajo_id: r.trabajo_id }, it.foto) } catch { fallas.push(i + 1) }
+      }
+      setMsg(fallas.length
+        ? { error: `El sobre ${sobre.trim()} se guardó, pero no se pudo subir la foto del ítem ${fallas.join(', ')}.` }
+        : { ok: `Sobre ${sobre.trim()} ingresado para ${c.nombre}${items.length > 1 ? ` con ${items.length} ítems` : ''}.` })
+      setSobre(''); setCliente(''); setItems([itemVacio()])
       cargarListas().then(setListas)
     } catch (e) {
       setMsg({ error: errorMsg(e) })
@@ -110,24 +106,34 @@ export default function Ingreso() {
               </label>
             ))}
           </div>
-          {tipo === 'presupuesto' && <p className="ayuda">Queda en estado Pendiente hasta que el cliente acepte o rechace.</p>}
+          {tipo === 'presupuesto' && <p className="ayuda">Cada ítem queda Pendiente hasta que el cliente acepte o rechace su presupuesto.</p>}
           {tipo === 'trabajo_nuevo' && <p className="ayuda">Pieza nueva que hay que fabricar para el cliente.</p>}
         </fieldset>
 
-        <label>Descripción del trabajo
-          <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
-        </label>
-
-        {tipo === 'presupuesto' && <CamposPresupuesto v={pres} set={setPres} />}
-
-        <label>Tallerista
-          <CampoTallerista valor={tallerista} onChange={setTallerista} talleristas={listas.talleristas} placeholder="Quién va a hacer el trabajo" />
-        </label>
-
-        <label>Foto de la pieza
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={elegirFoto} />
-        </label>
-        {preview && <img src={preview} className="foto-prev" alt="Vista previa" />}
+        <div className="items-ingreso">
+          {items.map((it, i) => (
+            <div key={it.clave} className="item-ingreso">
+              <div className="item-cab">
+                <b>Ítem {i + 1}</b>
+                {items.length > 1 && <button type="button" className="btn-link" onClick={() => quitarItem(it.clave)} aria-label={'Quitar ítem ' + (i + 1)}>Quitar</button>}
+              </div>
+              <label>Descripción del trabajo
+                <textarea rows={2} value={it.descripcion} onChange={(e) => cambiarItem(it.clave, { descripcion: e.target.value })} placeholder="Ej.: anillo, soldar" />
+              </label>
+              {tipo === 'presupuesto' && <CamposPresupuesto v={it.pres} set={(pres) => cambiarItem(it.clave, { pres })} />}
+              <div className="fila2">
+                <label>Tallerista
+                  <CampoTallerista id={'tall-ing-' + it.clave} valor={it.tallerista} onChange={(v) => cambiarItem(it.clave, { tallerista: v })} talleristas={listas.talleristas} placeholder="Quién va a hacer el trabajo" />
+                </label>
+                <label>Foto
+                  <input type="file" accept="image/*" capture="environment" onChange={(e) => elegirFoto(it.clave, e)} />
+                </label>
+              </div>
+              {it.preview && <img src={it.preview} className="foto-prev" alt={'Ítem ' + (i + 1)} />}
+            </div>
+          ))}
+          <button type="button" className="btn agregar-item" onClick={() => setItems([...items, itemVacio()])}>+ Agregar otro ítem</button>
+        </div>
 
         {msg?.error && <div className="error">{msg.error}</div>}
         {msg?.ok && <div className="ok">{msg.ok} <a href="#/sobres" onClick={(e) => { e.preventDefault(); ir('sobres') }}>Ver sobres</a></div>}

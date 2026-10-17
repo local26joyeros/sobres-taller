@@ -38,3 +38,20 @@ export async function agregarFoto(trabajoId, file) {
   if (error) throw error
   return path
 }
+
+// ---- Fotos de cada ítem del sobre ----
+// Foto principal del ítem (reemplaza la anterior)
+export async function subirFotoItem(item, file) {
+  const path = await subir(item.trabajo_id, file)
+  const { error } = await sb.from('items').update({ foto_path: path }).eq('id', item.id)
+  if (error) throw error
+  return path
+}
+
+// Foto adicional del ítem
+export async function agregarFotoItem(item, file) {
+  const path = await subir(item.trabajo_id, file)
+  const { error } = await sb.from('trabajo_fotos').insert({ trabajo_id: item.trabajo_id, item_id: item.id, path })
+  if (error) throw error
+  return path
+}
