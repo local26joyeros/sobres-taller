@@ -1,4 +1,4 @@
-import { METALES, MONEDAS, etiquetaPeso, fino, gramos } from './lib'
+import { METALES, etiquetaPeso, fino, gramos } from './lib'
 
 // Campo de tallerista: se elige de la lista o se escribe un nombre nuevo.
 export function CampoTallerista({ valor, onChange, talleristas, id = 'lista-talleristas', placeholder = 'Nombre del tallerista' }) {
@@ -19,10 +19,8 @@ export function CamposPresupuesto({ v, set }) {
     <div className="grilla-pres">
       <label>Hechura
         <div className="con-moneda">
+          <SelectorMoneda valor={v.moneda} onChange={(m) => set({ ...v, moneda: m })} />
           <input inputMode="decimal" value={v.hechura} onChange={(e) => set({ ...v, hechura: e.target.value })} />
-          <select value={v.moneda} onChange={(e) => set({ ...v, moneda: e.target.value })}>
-            {Object.entries(MONEDAS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
-          </select>
         </div>
       </label>
       <label>Metal
@@ -34,6 +32,16 @@ export function CamposPresupuesto({ v, set }) {
         <input inputMode="decimal" value={v.peso} onChange={(e) => set({ ...v, peso: e.target.value })} />
         {v.metal === 'oro' && f != null && !Number.isNaN(f) && <span className="ayuda">Oro fino: {gramos(f)}</span>}
       </label>
+    </div>
+  )
+}
+
+// Pesos / Dólares como dos botones, a la izquierda del monto
+export function SelectorMoneda({ valor, onChange }) {
+  return (
+    <div className="selector-moneda" role="group" aria-label="Moneda">
+      <button type="button" className={valor === 'ARS' ? 'sel' : ''} onClick={() => onChange('ARS')}>$</button>
+      <button type="button" className={valor === 'USD' ? 'sel' : ''} onClick={() => onChange('USD')}>US$</button>
     </div>
   )
 }

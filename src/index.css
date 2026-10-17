@@ -112,7 +112,7 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.primario { background: var(--tinta); border-color: var(--tinta); color: #fff; }
 .btn.primario:hover { background: #3a342c; }
-.btn.ok { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn.ok { background: var(--verde); border-color: var(--verde); color: #fff; margin: 0; padding: .55rem 1rem; border-radius: 8px; }
 .btn.peligro { background: #fff; border-color: var(--rojo); color: var(--rojo); }
 .btn.suave { background: transparent; border-color: var(--linea); color: var(--suave); font-weight: 500; }
 .btn.grande { padding: .8rem 1.6rem; font-size: 1.05rem; margin-top: 1rem; }
@@ -310,3 +310,14 @@ h4.sub { margin: 1rem 0 .4rem; font-size: .8rem; text-transform: uppercase; lett
 .campos-pago .con-moneda select { width: auto; }
 .confirmar .ayuda { margin: .5rem 0 1rem; }
 @media (max-width: 760px) { .campos-pago { grid-template-columns: 1fr; } }
+
+/* Selector $ / US$ */
+.selector-moneda { display: flex; flex: none; border: 1px solid #cfc6b8; border-radius: 8px; overflow: hidden; }
+.selector-moneda button { font: inherit; font-weight: 600; border: 0; background: #fff; color: var(--suave); padding: 0 .75rem; cursor: pointer; min-width: 3rem; }
+.selector-moneda button + button { border-left: 1px solid #cfc6b8; }
+.selector-moneda button.sel { background: var(--tinta); color: #fff; }
+.con-moneda { align-items: stretch; }
+/* Botones de las ventanas: mismo tamaño */
+.confirmar .botones .btn { flex: 1 1 0; min-width: 0; }
+.confirmar .botones { align-items: stretch; }
+.confirmar .botones .btn { height: 3rem; padding: 0 .7rem; line-height: 1; }

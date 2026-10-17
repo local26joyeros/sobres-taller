@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, etiquetaPeso } from '../lib'
 import { subirFoto, agregarFoto } from '../foto'
-import { CamposPresupuesto } from '../components'
+import { CamposPresupuesto, SelectorMoneda } from '../components'
 
 const PESTANAS = [
   ['todos', 'Todos', null],
@@ -162,11 +162,8 @@ export default function Sobres({ params }) {
             <div className="campos-pago">
               <label>Monto
                 <div className="con-moneda">
+                  <SelectorMoneda valor={pago.moneda} onChange={(m) => setPago({ ...pago, moneda: m })} />
                   <input inputMode="decimal" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value, error: '' })} autoFocus />
-                  <select value={pago.moneda} onChange={(e) => setPago({ ...pago, moneda: e.target.value })}>
-                    <option value="ARS">Pesos</option>
-                    <option value="USD">Dólares</option>
-                  </select>
                 </div>
               </label>
               <label>Oro 18k (g)
@@ -176,8 +173,8 @@ export default function Sobres({ params }) {
             <p className="ayuda">Es solo un registro: no se usa para facturar.</p>
             {pago.error && <div className="error">{pago.error}</div>}
             <div className="botones">
-              <button type="button" className="btn suave" onClick={() => responderPago(false)}>Cancelar</button>
               <button className="btn ok">Aceptar</button>
+              <button type="button" className="btn suave" onClick={() => responderPago(false)}>Cancelar</button>
             </div>
           </form>
         </div>
@@ -199,8 +196,8 @@ export default function Sobres({ params }) {
           <div className="modal card confirmar" onClick={(e) => e.stopPropagation()}>
             <p>{confirmacion.texto}</p>
             <div className="botones">
-              <button className="btn suave" onClick={() => responderConf(false)}>No</button>
               <button className="btn primario" onClick={() => responderConf(true)} autoFocus>Sí</button>
+              <button className="btn suave" onClick={() => responderConf(false)}>No</button>
             </div>
           </div>
         </div>
