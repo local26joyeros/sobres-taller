@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, etiquetaPeso } from '../lib'
-import { subirFoto } from '../foto'
+import { subirFoto, agregarFoto } from '../foto'
 import { CamposPresupuesto } from '../components'
 
 const PESTANAS = [
@@ -34,7 +34,6 @@ export default function Sobres({ params }) {
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
   const [marcados, setMarcados] = useState([])
-  const [tallDevolver, setTallDevolver] = useState('')
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -73,13 +72,17 @@ export default function Sobres({ params }) {
   const preguntar = (texto) => new Promise((resolve) => setConfirmacion({ texto, resolve }))
   const responderConf = (si) => { confirmacion.resolve(si); setConfirmacion(null) }
 
+  // Lista para elegir a qué tallerista vuelve un sobre
+  const [eleccion, setEleccion] = useState(null)
+  const elegirTallerista = (texto) => new Promise((resolve) => setEleccion({ texto, resolve }))
+  const responderElec = (t) => { eleccion.resolve(t); setEleccion(null) }
+
   const b = tab[0] === 'todos' ? buscar.trim().toLowerCase() : ''
   const visibles = trabajos.filter((t) =>
     (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || (t.descripcion || '').toLowerCase().includes(b)) &&
     (!filtroTall || String(t.tallerista_id) === filtroTall || (filtroTall === 'sin' && !t.tallerista_id)))
 
   const activos = listas.talleristas.filter((x) => x.activo)
-  const tallElegido = tallDevolver || (activos[0] ? String(activos[0].id) : '')
   const marcar = (id, si) => setMarcados((m) => (si ? [...m, id] : m.filter((x) => x !== id)))
 
   async function facturarMarcados() {
@@ -88,10 +91,10 @@ export default function Sobres({ params }) {
   }
 
   async function devolverMarcados() {
-    const nombre = activos.find((x) => String(x.id) === tallElegido)?.nombre
-    if (!nombre) return setError('Elegí a qué tallerista vuelve.')
-    if (!(await preguntar(`¿Estás seguro de devolver ${marcados.length === 1 ? 'el sobre elegido' : `los ${marcados.length} sobres elegidos`} al taller de ${nombre}?`))) return
-    accion(() => devolverATaller(marcados, Number(tallElegido)))
+    const tall = await elegirTallerista(`¿A qué tallerista ${marcados.length === 1 ? 'vuelve el sobre elegido' : `vuelven los ${marcados.length} sobres elegidos`}?`)
+    if (!tall) return
+    if (!(await preguntar(`¿Estás seguro de devolver ${marcados.length === 1 ? 'el sobre elegido' : `los ${marcados.length} sobres elegidos`} al taller de ${tall.nombre}?`))) return
+    accion(() => devolverATaller(marcados, tall.id))
   }
 
   const cuenta = (estados) => (estados ? estados.reduce((s, e) => s + (conteo[e] || 0), 0) : null)
@@ -125,12 +128,7 @@ export default function Sobres({ params }) {
             {marcados.length ? `${marcados.length} elegido${marcados.length > 1 ? 's' : ''}` : 'Elegir todos'}
           </label>
           <button className="btn ok" disabled={!marcados.length} onClick={facturarMarcados}>Facturar</button>
-          <div className="devolver">
-            <select value={tallElegido} onChange={(e) => setTallDevolver(e.target.value)} aria-label="Tallerista">
-              {activos.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-            </select>
-            <button className="btn" disabled={!marcados.length} onClick={devolverMarcados}>Devolver a taller</button>
-          </div>
+          <button className="btn" disabled={!marcados.length} onClick={devolverMarcados}>Devolver a taller</button>
         </div>
       )}
       {error && <div className="error">{error}</div>}
@@ -144,8 +142,20 @@ export default function Sobres({ params }) {
           ))}
         </div>
       )}
-      {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} talleristas={listas.talleristas} preguntar={preguntar}
+      {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} preguntar={preguntar} elegirTallerista={elegirTallerista}
         accion={async (fn) => { await accion(fn); setDetalle(null) }} />}
+      {eleccion && (
+        <div className="modal-fondo centrado" onClick={() => responderElec(null)}>
+          <div className="modal card confirmar" onClick={(e) => e.stopPropagation()}>
+            <p>{eleccion.texto}</p>
+            <div className="lista-talleristas">
+              {activos.map((x) => <button key={x.id} className="btn" onClick={() => responderElec(x)}>{x.nombre}</button>)}
+              {activos.length === 0 && <div className="meta">No hay talleristas cargados.</div>}
+            </div>
+            <button className="btn suave" onClick={() => responderElec(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
       {confirmacion && (
         <div className="modal-fondo centrado" onClick={() => responderConf(false)}>
           <div className="modal card confirmar" onClick={(e) => e.stopPropagation()}>
@@ -310,19 +320,18 @@ function Tarjeta({ t, talleristas, accion, preguntar, abrir, marcado, marcar }) 
 
 const aTexto = (v) => (v == null ? '' : String(v).replace('.', ','))
 
-function Detalle({ t, cerrar, recargar, talleristas, preguntar, accion }) {
-  const activos = talleristas.filter((x) => x.activo)
-  const [tallVuelta, setTallVuelta] = useState('')
-  const tallElegido = tallVuelta || String(t.tallerista_id || activos[0]?.id || '')
-
+function Detalle({ t, cerrar, recargar, preguntar, elegirTallerista, accion }) {
   async function devolver() {
-    const nombre = activos.find((x) => String(x.id) === tallElegido)?.nombre
-    if (!nombre) return
-    if (!(await preguntar(`¿Estás seguro de devolver el sobre ${t.nro_sobre} al taller de ${nombre}?`))) return
-    accion(() => devolverATaller([t.id], Number(tallElegido)))
+    const tall = await elegirTallerista(`¿A qué tallerista vuelve el sobre ${t.nro_sobre}?`)
+    if (!tall) return
+    if (!(await preguntar(`¿Estás seguro de devolver el sobre ${t.nro_sobre} al taller de ${tall.nombre}?`))) return
+    accion(() => devolverATaller([t.id], tall.id))
   }
 
-  const [url, setUrl] = useState(null)
+  // Fotos: la principal (foto_path) + las agregadas
+  const [principal, setPrincipal] = useState(t.foto_path)
+  const [fotos, setFotos] = useState([]) // [{ key, url }]
+  const [verFoto, setVerFoto] = useState(0)
   const [hist, setHist] = useState([])
   const [talleres, setTalleres] = useState([])
   const [desc, setDesc] = useState(t.descripcion || '')
@@ -330,11 +339,17 @@ function Detalle({ t, cerrar, recargar, talleristas, preguntar, accion }) {
   const [msg, setMsg] = useState('')
   const [subiendo, setSubiendo] = useState(false)
 
+  const cargarFotos = useCallback(async (ppal) => {
+    const { data } = await sb.from('trabajo_fotos').select('id,path').eq('trabajo_id', t.id).order('id')
+    const paths = [ppal, ...(data || []).map((x) => x.path)].filter(Boolean)
+    setFotos(await Promise.all(paths.map(async (p) => ({ key: p, url: await fotoUrl(p) }))))
+  }, [t.id])
+
   useEffect(() => {
-    fotoUrl(t.foto_path).then(setUrl)
+    cargarFotos(t.foto_path)
     sb.from('historial_estados').select('*').eq('trabajo_id', t.id).order('cambiado_en').then(({ data }) => setHist(data || []))
     sb.from('traspasos_taller').select('id,fecha,talleristas(nombre)').eq('trabajo_id', t.id).order('fecha').order('id').then(({ data }) => setTalleres(data || []))
-  }, [t.id, t.foto_path])
+  }, [t.id, t.foto_path, cargarFotos])
 
   async function guardarDesc() {
     const { error } = await sb.from('trabajos').update({ descripcion: desc.trim() || null }).eq('id', t.id)
@@ -350,18 +365,30 @@ function Detalle({ t, cerrar, recargar, talleristas, preguntar, accion }) {
     recargar()
   }
 
-  async function nuevaFoto(e) {
+  // cambiar = reemplaza la foto principal · agregar = suma otra foto
+  async function nuevaFoto(e, modo) {
     const f = e.target.files?.[0]
+    e.target.value = ''
     if (!f) return
     setSubiendo(true)
     try {
-      const p = await subirFoto(t.id, f)
-      setUrl(await fotoUrl(p))
-      setMsg('Foto actualizada.')
+      if (modo === 'cambiar' || !principal) {
+        const p = await subirFoto(t.id, f)
+        setPrincipal(p)
+        await cargarFotos(p)
+        setVerFoto(0)
+        setMsg(modo === 'cambiar' ? 'Foto cambiada.' : 'Foto agregada.')
+      } else {
+        await agregarFoto(t.id, f)
+        await cargarFotos(principal)
+        setVerFoto(fotos.length)
+        setMsg('Foto agregada.')
+      }
       recargar()
     } catch (er) { setMsg(errorMsg(er)) }
     setSubiendo(false)
   }
+  const url = fotos[verFoto]?.url || fotos[0]?.url
 
   // Estado con el nombre del tallerista al pasar a taller
   const ESTADO_H = { presupuesto: 'Presupuesto', esperando_confirmacion: 'Pendiente', rechazado: 'Rechazado', taller: 'En taller', listo_para_facturar: 'Listo para facturar', facturado: 'Facturado', entregado: 'Entregado' }
@@ -373,9 +400,25 @@ function Detalle({ t, cerrar, recargar, talleristas, preguntar, accion }) {
         <h2>Sobre {t.nro_sobre}</h2>
         <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · {t.estado === 'taller' && t.tallerista ? <span className="chip tallerista-actual">{t.tallerista}</span> : <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>}</div>
         {url ? <img src={url} className="foto-grande" alt={'Sobre ' + t.nro_sobre} /> : <div className="sin-foto">Sin foto</div>}
-        <label className="btn suave archivo">{subiendo ? 'Subiendo…' : url ? 'Cambiar foto' : 'Agregar foto'}
-          <input type="file" accept="image/*" capture="environment" onChange={nuevaFoto} hidden />
-        </label>
+        {fotos.length > 1 && (
+          <div className="miniaturas">
+            {fotos.map((f, i) => (
+              <button key={f.key} className={'miniatura' + (i === verFoto ? ' sel' : '')} onClick={() => setVerFoto(i)}>
+                <img src={f.url} alt={'Foto ' + (i + 1)} />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="botones-foto">
+          {principal && (
+            <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Cambiar foto'}
+              <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'cambiar')} hidden />
+            </label>
+          )}
+          <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Agregar foto'}
+            <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'agregar')} hidden />
+          </label>
+        </div>
         <label>Descripción
           <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
         </label>
@@ -392,13 +435,8 @@ function Detalle({ t, cerrar, recargar, talleristas, preguntar, accion }) {
 
         {t.estado === 'listo_para_facturar' && (
           <div className="acciones-detalle">
-            <button className="btn ok" onClick={() => ir('facturacion', { sobres: t.id })}>Ir a facturación</button>
-            <div className="devolver">
-              <select value={tallElegido} onChange={(e) => setTallVuelta(e.target.value)} aria-label="Tallerista">
-                {activos.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-              </select>
-              <button className="btn" onClick={devolver}>Volver a taller</button>
-            </div>
+            <button className="btn ok" onClick={() => ir('facturacion', { sobres: t.id })}>Enviar a facturación</button>
+            <button className="btn" onClick={devolver}>Devolver a taller</button>
           </div>
         )}
 

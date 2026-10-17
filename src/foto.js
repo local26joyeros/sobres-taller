@@ -15,12 +15,26 @@ async function comprimir(file) {
   }
 }
 
-export async function subirFoto(trabajoId, file) {
+async function subir(trabajoId, file) {
   const blob = await comprimir(file)
   const path = `${trabajoId}/${Date.now()}.jpg`
   const { error } = await sb.storage.from('fotos').upload(path, blob, { contentType: 'image/jpeg' })
   if (error) throw error
-  const { error: e2 } = await sb.from('trabajos').update({ foto_path: path }).eq('id', trabajoId)
-  if (e2) throw e2
+  return path
+}
+
+// Foto principal del sobre (la reemplaza si ya había una)
+export async function subirFoto(trabajoId, file) {
+  const path = await subir(trabajoId, file)
+  const { error } = await sb.from('trabajos').update({ foto_path: path }).eq('id', trabajoId)
+  if (error) throw error
+  return path
+}
+
+// Foto adicional (no reemplaza ninguna)
+export async function agregarFoto(trabajoId, file) {
+  const path = await subir(trabajoId, file)
+  const { error } = await sb.from('trabajo_fotos').insert({ trabajo_id: trabajoId, path })
+  if (error) throw error
   return path
 }
