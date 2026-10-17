@@ -48,7 +48,7 @@ export default function Sobres({ params }) {
     const ids = (data || []).map((t) => t.id)
     const rec = {}
     if (ids.length) {
-      const { data: tr } = await sb.from('traspasos_taller').select('id,trabajo_id,fecha,hasta,pago,pago_moneda,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id')
+      const { data: tr } = await sb.from('traspasos_taller').select('id,trabajo_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id')
       ;(tr || []).forEach((x) => { (rec[x.trabajo_id] ||= []).push(x) })
     }
     setTrabajos((data || []).map((t) => ({ ...t, talleres: rec[t.id] || [] })))
@@ -74,12 +74,13 @@ export default function Sobres({ params }) {
 
   // Cuánto se le pagó al tallerista
   const [pago, setPago] = useState(null)
-  const preguntarPago = (texto) => new Promise((resolve) => setPago({ texto, resolve, monto: '', moneda: 'ARS', error: '' }))
+  const preguntarPago = (texto) => new Promise((resolve) => setPago({ texto, resolve, monto: '', moneda: 'ARS', oro: '', error: '' }))
   function responderPago(ok) {
     if (!ok) { pago.resolve(null); setPago(null); return }
-    const m = num(pago.monto)
-    if (m === null || Number.isNaN(m) || m < 0) return setPago({ ...pago, error: 'Escribí el monto (puede ser 0).' })
-    pago.resolve({ monto: m, moneda: pago.moneda }); setPago(null)
+    const m = num(pago.monto), o = num(pago.oro)
+    if (Number.isNaN(m) || Number.isNaN(o) || m < 0 || o < 0) return setPago({ ...pago, error: 'Revisá los números.' })
+    if (m === null && o === null) return setPago({ ...pago, error: 'Cargá el monto, el oro 18k o los dos (pueden ser 0).' })
+    pago.resolve({ monto: m, moneda: pago.moneda, oro: o }); setPago(null)
   }
 
   // Lista para elegir a qué tallerista vuelve un sobre
@@ -158,13 +159,21 @@ export default function Sobres({ params }) {
         <div className="modal-fondo centrado" onClick={() => responderPago(false)}>
           <form className="modal card confirmar" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); responderPago(true) }}>
             <p>{pago.texto}</p>
-            <div className="con-moneda monto-pago">
-              <input inputMode="decimal" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value, error: '' })} placeholder="Monto" autoFocus />
-              <select value={pago.moneda} onChange={(e) => setPago({ ...pago, moneda: e.target.value })}>
-                <option value="ARS">Pesos</option>
-                <option value="USD">Dólares</option>
-              </select>
+            <div className="campos-pago">
+              <label>Monto
+                <div className="con-moneda">
+                  <input inputMode="decimal" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value, error: '' })} autoFocus />
+                  <select value={pago.moneda} onChange={(e) => setPago({ ...pago, moneda: e.target.value })}>
+                    <option value="ARS">Pesos</option>
+                    <option value="USD">Dólares</option>
+                  </select>
+                </div>
+              </label>
+              <label>Oro 18k (g)
+                <input inputMode="decimal" value={pago.oro} onChange={(e) => setPago({ ...pago, oro: e.target.value, error: '' })} />
+              </label>
             </div>
+            <p className="ayuda">Es solo un registro: no se usa para facturar.</p>
             {pago.error && <div className="error">{pago.error}</div>}
             <div className="botones">
               <button type="button" className="btn suave" onClick={() => responderPago(false)}>Cancelar</button>
@@ -223,7 +232,8 @@ function Recorrido({ t }) {
 }
 
 const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : '')
-const montoPago = (v, m) => (v == null ? '—' : hechura(v, m))
+// "$ 15.000,00 + 2,5 g oro 18k"
+const textoPago = (x) => [x.pago != null ? hechura(x.pago, x.pago_moneda) : null, x.pago_oro18 != null ? gramos(x.pago_oro18) + ' oro 18k' : null].filter(Boolean).join(' + ')
 
 function ResumenTalleristas({ abrir }) {
   const [filas, setFilas] = useState(null)
@@ -231,7 +241,7 @@ function ResumenTalleristas({ abrir }) {
 
   useEffect(() => {
     sb.from('traspasos_taller')
-      .select('id,fecha,hasta,pago,pago_moneda,tallerista_id,talleristas(nombre),trabajos(id,nro_sobre,descripcion,estado,clientes(nombre))')
+      .select('id,fecha,hasta,pago,pago_moneda,pago_oro18,tallerista_id,talleristas(nombre),trabajos(id,nro_sobre,descripcion,estado,clientes(nombre))')
       .order('fecha', { ascending: false }).order('id', { ascending: false }).limit(1000)
       .then(({ data }) => setFilas(data || []))
   }, [])
@@ -249,6 +259,7 @@ function ResumenTalleristas({ abrir }) {
         const actuales = grupos[n].filter((x) => !x.hasta && x.trabajos?.estado === 'taller')
         const terminados = grupos[n].filter((x) => x.hasta)
         const total = (m) => terminados.filter((x) => x.pago != null && x.pago_moneda === m).reduce((s, x) => s + Number(x.pago), 0)
+        const totalOro = terminados.reduce((s, x) => s + Number(x.pago_oro18 || 0), 0)
         const verTodos = abierto[n]
         return (
           <div key={n} className="card grupo-tallerista">
@@ -277,7 +288,7 @@ function ResumenTalleristas({ abrir }) {
                       <tr key={x.id}>
                         <td><b>{x.trabajos?.nro_sobre}</b> <span className="meta">{x.trabajos?.clientes?.nombre}</span></td>
                         <td className="d">{dma(x.fecha)}</td><td className="d">{dma(x.hasta)}</td>
-                        <td className="d">{x.pago == null ? <span className="meta">Pasó a otro taller</span> : montoPago(x.pago, x.pago_moneda)}</td>
+                        <td className="d">{x.pago == null && x.pago_oro18 == null ? <span className="meta">Pasó a otro taller</span> : textoPago(x)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -285,7 +296,8 @@ function ResumenTalleristas({ abrir }) {
                     <tr><td colSpan={3}>Total pagado</td><td className="d">
                       {total('ARS') > 0 && <div>{hechura(total('ARS'), 'ARS')}</div>}
                       {total('USD') > 0 && <div>{hechura(total('USD'), 'USD')}</div>}
-                      {!total('ARS') && !total('USD') && '—'}
+                      {totalOro > 0 && <div>{gramos(totalOro)} oro 18k</div>}
+                      {!total('ARS') && !total('USD') && !totalOro && '—'}
                     </td></tr>
                   </tfoot>
                 </table>
@@ -337,7 +349,7 @@ function Tarjeta({ t, talleristas, accion, preguntar, preguntarPago, abrir, marc
     const p = await preguntarPago(`Sobre ${t.nro_sobre} listo para facturar. ¿Cuánto le pagaste${t.tallerista ? ' a ' + t.tallerista : ''} por este trabajo?`)
     if (!p) return
     accion(async () => {
-      const { error } = await sb.rpc('marcar_listo', { p_trabajo: t.id, p_pago: p.monto, p_moneda: p.moneda })
+      const { error } = await sb.rpc('marcar_listo', { p_trabajo: t.id, p_pago: p.monto, p_moneda: p.moneda, p_oro18: p.oro })
       if (error) throw error
     })
   }
@@ -369,8 +381,8 @@ function Tarjeta({ t, talleristas, accion, preguntar, preguntarPago, abrir, marc
         {t.estado === 'facturado' && (
           <div className="meta">Facturado {fecha(t.facturado_en)} · {hechura(t.hechura, t.hechura_moneda)} · {METALES[t.metal] || ''} {t.peso_fino != null ? gramos(t.peso_fino) + ' fino' : ''}</div>
         )}
-        {t.estado === 'listo_para_facturar' && ultimo?.pago != null && (
-          <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{hechura(ultimo.pago, ultimo.pago_moneda)}</b></div>
+        {t.estado === 'listo_para_facturar' && (ultimo?.pago != null || ultimo?.pago_oro18 != null) && (
+          <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{textoPago(ultimo)}</b></div>
         )}
         {t.foto_path && <div className="meta">📷 Tiene foto</div>}
       </div>

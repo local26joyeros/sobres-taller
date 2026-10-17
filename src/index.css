@@ -305,3 +305,8 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 .monto-pago { margin-bottom: 1rem; }
 .monto-pago input { font-size: 1.15rem; text-align: right; }
 h4.sub { margin: 1rem 0 .4rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); }
+.campos-pago { display: grid; grid-template-columns: 1.6fr 1fr; gap: .7rem; text-align: left; }
+.campos-pago input { width: 100%; text-align: right; font-size: 1.05rem; }
+.campos-pago .con-moneda select { width: auto; }
+.confirmar .ayuda { margin: .5rem 0 1rem; }
+@media (max-width: 760px) { .campos-pago { grid-template-columns: 1fr; } }
