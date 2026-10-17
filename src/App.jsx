@@ -57,11 +57,7 @@ export default function App() {
 
   useEffect(() => {
     sb.auth.getSession().then(({ data }) => setSesion(data.session))
-    const { data } = sb.auth.onAuthStateChange((e, s) => {
-      setSesion(s)
-      // Al iniciar sesión, ir a Inicio
-      if (e === 'SIGNED_IN' && window.location.hash) { window.history.replaceState(null, '', window.location.pathname); setRuta(leerHash()) }
-    })
+    const { data } = sb.auth.onAuthStateChange((_e, s) => setSesion(s))
     const onHash = () => { setRuta(leerHash()); setMenu(false); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
     return () => { data.subscription.unsubscribe(); window.removeEventListener('hashchange', onHash) }
