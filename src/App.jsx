@@ -8,13 +8,16 @@ import Clientes from './pages/Clientes'
 import Talleristas from './pages/Talleristas'
 
 const PAGINAS = [
-  ['ingreso', 'Nuevo ingreso'],
   ['sobres', 'Inicio'],
+  ['ingreso', 'Nuevo ingreso'],
   ['facturacion', 'Facturación'],
   ['facturados', 'Facturados'],
   ['clientes', 'Clientes'],
   ['talleristas', 'Talleristas'],
 ]
+
+// Al abrir la app siempre se arranca en Inicio
+if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search)
 
 function leerHash() {
   const [p, q] = window.location.hash.replace(/^#\/?/, '').split('?')
@@ -54,7 +57,11 @@ export default function App() {
 
   useEffect(() => {
     sb.auth.getSession().then(({ data }) => setSesion(data.session))
-    const { data } = sb.auth.onAuthStateChange((_e, s) => setSesion(s))
+    const { data } = sb.auth.onAuthStateChange((e, s) => {
+      setSesion(s)
+      // Al iniciar sesión, ir a Inicio
+      if (e === 'SIGNED_IN' && window.location.hash) { window.history.replaceState(null, '', window.location.pathname); setRuta(leerHash()) }
+    })
     const onHash = () => { setRuta(leerHash()); setMenu(false); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
     return () => { data.subscription.unsubscribe(); window.removeEventListener('hashchange', onHash) }
