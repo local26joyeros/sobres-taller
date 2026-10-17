@@ -9,7 +9,7 @@ import Talleristas from './pages/Talleristas'
 
 const PAGINAS = [
   ['ingreso', 'Nuevo ingreso'],
-  ['sobres', 'Sobres'],
+  ['sobres', 'Inicio'],
   ['facturacion', 'Facturación'],
   ['facturados', 'Facturados'],
   ['clientes', 'Clientes'],
@@ -69,7 +69,7 @@ export default function App() {
       <header className="barra no-print">
         <button className="hamburguesa" onClick={() => setMenu(true)} aria-label="Abrir menú">☰</button>
         <div className="marca">Trabajos <span>Local 26</span></div>
-        <div className="seccion-actual">{PAGINAS.find(([k]) => k === pagina)?.[1]}</div>
+        <div className="seccion-actual">{pagina !== 'sobres' && PAGINAS.find(([k]) => k === pagina)?.[1]}</div>
       </header>
       <div className={'cajon-fondo no-print' + (menu ? ' abierto' : '')} onClick={() => setMenu(false)} />
       <nav className={'cajon no-print' + (menu ? ' abierto' : '')} aria-hidden={!menu}>

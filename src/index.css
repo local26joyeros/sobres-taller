@@ -159,6 +159,30 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 .chip.est-rechazado, .sobre.est-rechazado { --c: var(--rojo); --cc: var(--rojo-claro); }
 .chip.est-entregado, .sobre.est-entregado { --c: #8a8379; --cc: #efece7; }
 .chip { color: var(--c); background: var(--cc); }
+.chip.tallerista-actual { color: #fff; background: var(--verde); }
+
+/* Recorrido de talleres: verde = está ahí ahora, gris = ya salió */
+.recorrido { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; font-size: .88rem; }
+.recorrido .paso { padding: .15rem .55rem; border-radius: 999px; font-weight: 600; }
+.recorrido .paso small { font-weight: 400; opacity: .8; }
+.recorrido .flecha { color: var(--suave); margin-right: .3rem; }
+.recorrido .paso.pasado { color: #8a8379; background: #efece7; }
+.recorrido .paso.actual { color: #fff; background: var(--verde); }
+.nombre-actual { color: var(--verde); }
+.nombre-pasado { color: #8a8379; }
+
+.acciones-taller { display: flex; flex-direction: column; gap: .5rem; width: 100%; }
+.acciones-taller .btn { width: 100%; }
+.cambio-taller { display: flex; gap: .4rem; flex-wrap: wrap; }
+.cambio-taller select, .cambio-taller input[type=text], .cambio-taller input:not([type]) { flex: 1 1 130px; }
+.cambio-taller input[type=date] { flex: 0 1 150px; }
+
+/* Confirmación Sí / No */
+.modal-fondo.centrado { align-items: center; }
+.confirmar { max-width: 380px; text-align: center; padding: 1.4rem; }
+.confirmar p { margin: 0 0 1.2rem; font-size: 1.05rem; }
+.confirmar .botones { display: flex; gap: .6rem; }
+.confirmar .botones .btn { flex: 1; padding: .7rem; }
 .sobre { border-left-color: var(--c); }
 
 /* Modal */

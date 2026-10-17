@@ -1,15 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, hoyAR, etiquetaPeso } from '../lib'
 import { subirFoto } from '../foto'
-import { CampoTallerista, CamposPresupuesto } from '../components'
+import { CamposPresupuesto } from '../components'
 
 const PESTANAS = [
-  ['pendientes', 'Pendientes', ['presupuesto', 'esperando_confirmacion']],
+  ['todos', 'Todos', null],
   ['taller', 'En taller', ['taller']],
+  ['pendientes', 'Pendientes', ['presupuesto', 'esperando_confirmacion']],
   ['listos', 'Listos para facturar', ['listo_para_facturar']],
   ['entregar', 'Para entregar', ['facturado', 'rechazado']],
   ['entregados', 'Entregados', ['entregado']],
-  ['todos', 'Todos', null],
 ]
 
 export default function Sobres({ params }) {
@@ -32,7 +32,14 @@ export default function Sobres({ params }) {
       q, sb.from('trabajos').select('estado').neq('estado', 'entregado'),
     ])
     if (error) setError(errorMsg(error))
-    setTrabajos(data || [])
+    // Recorrido de talleres de cada sobre
+    const ids = (data || []).map((t) => t.id)
+    const rec = {}
+    if (ids.length) {
+      const { data: tr } = await sb.from('traspasos_taller').select('id,trabajo_id,fecha,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id')
+      ;(tr || []).forEach((x) => { (rec[x.trabajo_id] ||= []).push(x) })
+    }
+    setTrabajos((data || []).map((t) => ({ ...t, talleres: rec[t.id] || [] })))
     const c = {}
     ;(est || []).forEach((r) => { c[r.estado] = (c[r.estado] || 0) + 1 })
     setConteo(c)
@@ -48,7 +55,12 @@ export default function Sobres({ params }) {
     try { await fn(); await cargar(); recargarListas() } catch (e) { setError(errorMsg(e)) }
   }
 
-  const b = buscar.trim().toLowerCase()
+  // Ventana de confirmación con "Sí" / "No"
+  const [confirmacion, setConfirmacion] = useState(null)
+  const preguntar = (texto) => new Promise((resolve) => setConfirmacion({ texto, resolve }))
+  const responderConf = (si) => { confirmacion.resolve(si); setConfirmacion(null) }
+
+  const b = tab[0] === 'todos' ? buscar.trim().toLowerCase() : ''
   const visibles = trabajos.filter((t) =>
     (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || (t.descripcion || '').toLowerCase().includes(b)) &&
     (!filtroTall || String(t.tallerista_id) === filtroTall || (filtroTall === 'sin' && !t.tallerista_id)))
@@ -57,7 +69,6 @@ export default function Sobres({ params }) {
 
   return (
     <section>
-      <h1>Sobres</h1>
       <div className="pestanas">
         {PESTANAS.map(([k, t, est]) => {
           const n = k === 'entregados' || k === 'todos' ? null : cuenta(est)
@@ -69,7 +80,7 @@ export default function Sobres({ params }) {
         })}
       </div>
       <div className="filtros">
-        <input placeholder="Buscar por sobre, cliente o descripción" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
+        {tab[0] === 'todos' && <input placeholder="Buscar por sobre, cliente o descripción" value={buscar} onChange={(e) => setBuscar(e.target.value)} />}
         {(tab[0] === 'taller' || tab[0] === 'todos') && (
           <select value={filtroTall} onChange={(e) => setFiltroTall(e.target.value)}>
             <option value="">Todos los talleristas</option>
@@ -85,17 +96,54 @@ export default function Sobres({ params }) {
       {cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
         <div className="lista">
           {visibles.map((t) => (
-            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} abrir={() => setDetalle(t)} />
+            <Tarjeta key={t.id} t={t} talleristas={listas.talleristas} accion={accion} preguntar={preguntar} abrir={() => setDetalle(t)} />
           ))}
         </div>
       )}
       {detalle && <Detalle t={detalle} cerrar={() => setDetalle(null)} recargar={cargar} />}
+      {confirmacion && (
+        <div className="modal-fondo centrado" onClick={() => responderConf(false)}>
+          <div className="modal card confirmar" onClick={(e) => e.stopPropagation()}>
+            <p>{confirmacion.texto}</p>
+            <div className="botones">
+              <button className="btn suave" onClick={() => responderConf(false)}>No</button>
+              <button className="btn primario" onClick={() => responderConf(true)} autoFocus>Sí</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
 
-function Tarjeta({ t, talleristas, accion, abrir }) {
-  const [traspaso, setTraspaso] = useState(null) // { nombre, fecha }
+function Recorrido({ t }) {
+  const lista = t.talleres || []
+  const enTaller = t.estado === 'taller'
+  // En taller con un solo tallerista: el nombre ya está arriba
+  if (!lista.length || (enTaller && lista.length === 1)) return null
+  return (
+    <div className="recorrido">
+      {lista.map((x, i) => {
+        const actual = enTaller && i === lista.length - 1
+        return (
+          <span key={x.id} className="paso-envoltura">
+            {i > 0 && <span className="flecha">→</span>}
+            <span className={'paso ' + (actual ? 'actual' : 'pasado')}>
+              {x.talleristas?.nombre} <small>{x.fecha.slice(8, 10)}/{x.fecha.slice(5, 7)}</small>
+            </span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function Tarjeta({ t, talleristas, accion, preguntar, abrir }) {
+  const opciones = talleristas.filter((x) => x.activo && x.id !== t.tallerista_id)
+  const [destino, setDestino] = useState('')
+  const [otro, setOtro] = useState('')
+  const [fechaPase, setFechaPase] = useState(hoyAR())
+  const elegido = destino || (opciones[0] ? String(opciones[0].id) : 'otro')
 
   const upd = async (campos) => {
     const { error } = await sb.from('trabajos').update(campos).eq('id', t.id)
@@ -107,13 +155,25 @@ function Tarjeta({ t, talleristas, accion, abrir }) {
     if (error) throw error
   })
 
-  const pasar = () => accion(async () => {
-    const id = await resolverTallerista(traspaso.nombre, talleristas)
-    if (!id) throw new Error('Escribí el nombre del tallerista.')
-    const { error } = await sb.rpc('asignar_tallerista', { p_trabajo: t.id, p_tallerista: id, p_fecha: traspaso.fecha || null })
-    if (error) throw error
-    setTraspaso(null)
-  })
+  async function cambiarTaller() {
+    const nombre = elegido === 'otro' ? otro.trim() : opciones.find((x) => String(x.id) === elegido)?.nombre
+    if (!nombre) return accion(async () => { throw new Error('Escribí el nombre del tallerista.') })
+    const texto = t.tallerista
+      ? `¿Estás seguro de pasar el sobre ${t.nro_sobre} de ${t.tallerista} a ${nombre}?`
+      : `¿Estás seguro de pasar el sobre ${t.nro_sobre} a ${nombre}?`
+    if (!(await preguntar(texto))) return
+    accion(async () => {
+      const id = elegido === 'otro' ? await resolverTallerista(nombre, talleristas) : Number(elegido)
+      const { error } = await sb.rpc('asignar_tallerista', { p_trabajo: t.id, p_tallerista: id, p_fecha: fechaPase || null })
+      if (error) throw error
+      setDestino(''); setOtro(''); setFechaPase(hoyAR())
+    })
+  }
+
+  async function listo() {
+    if (!(await preguntar(`¿Estás seguro de que el sobre ${t.nro_sobre} está listo para facturar?`))) return
+    accion(() => upd({ estado: 'listo_para_facturar' }))
+  }
 
   return (
     <div className={'card sobre est-' + t.estado}>
@@ -122,10 +182,13 @@ function Tarjeta({ t, talleristas, accion, abrir }) {
           <div className="nro">Sobre {t.nro_sobre}</div>
           <div className="cliente">{t.cliente}</div>
         </div>
-        <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>
+        {t.estado === 'taller'
+          ? (t.tallerista ? <span className="chip tallerista-actual">{t.tallerista}</span> : <span className="chip est-taller">Sin tallerista</span>)
+          : <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>}
       </div>
       <div className="sobre-cuerpo" onClick={abrir} role="button">
-        <div className="meta">{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}{t.estado !== 'taller' && t.tallerista ? ' · ' + t.tallerista : ''}</div>
+        <div className="meta">{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}</div>
+        <Recorrido t={t} />
         {t.descripcion && <div className="desc">{t.descripcion}</div>}
         {t.presupuesto_hechura != null && (
           <div className="meta">Presupuesto: {hechura(t.presupuesto_hechura, t.presupuesto_moneda)} · {METALES[t.presupuesto_metal] || '—'}
@@ -145,18 +208,18 @@ function Tarjeta({ t, talleristas, accion, abrir }) {
             <button className="btn peligro" onClick={() => window.confirm(`¿Marcar el presupuesto del sobre ${t.nro_sobre} como rechazado? Pasa a Listo para facturar.`) && responder(false)}>Rechazado</button>
           </>
         )}
-        {t.estado === 'taller' && !traspaso && (
-          <>
-            <button className="btn primario" onClick={() => accion(() => upd({ estado: 'listo_para_facturar' }))}>Listo para facturar</button>
-            <button className="btn" onClick={() => setTraspaso({ nombre: '', fecha: hoyAR() })}>{t.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
-          </>
-        )}
-        {t.estado === 'taller' && traspaso && (
-          <div className="mini-form">
-            <CampoTallerista id={'tall-' + t.id} valor={traspaso.nombre} onChange={(v) => setTraspaso({ ...traspaso, nombre: v })} talleristas={talleristas} placeholder="Nuevo tallerista" />
-            <input type="date" value={traspaso.fecha} onChange={(e) => setTraspaso({ ...traspaso, fecha: e.target.value })} />
-            <button className="btn primario" onClick={pasar}>Pasar</button>
-            <button className="btn suave" onClick={() => setTraspaso(null)}>Cancelar</button>
+        {t.estado === 'taller' && (
+          <div className="acciones-taller">
+            <div className="cambio-taller">
+              <select value={elegido} onChange={(e) => setDestino(e.target.value)} aria-label="Tallerista">
+                {opciones.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                <option value="otro">Otro…</option>
+              </select>
+              {elegido === 'otro' && <input value={otro} onChange={(e) => setOtro(e.target.value)} placeholder="Nombre" autoFocus />}
+              <input type="date" value={fechaPase} onChange={(e) => setFechaPase(e.target.value)} aria-label="Fecha del cambio" />
+            </div>
+            <button className="btn" onClick={cambiarTaller}>{t.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
+            <button className="btn ok" onClick={listo}>Listo para facturar</button>
           </div>
         )}
         {t.estado === 'listo_para_facturar' && (
@@ -225,7 +288,7 @@ function Detalle({ t, cerrar, recargar }) {
       <div className="modal card" onClick={(e) => e.stopPropagation()}>
         <button className="cerrar" onClick={cerrar} aria-label="Cerrar">×</button>
         <h2>Sobre {t.nro_sobre}</h2>
-        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span></div>
+        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · {t.estado === 'taller' && t.tallerista ? <span className="chip tallerista-actual">{t.tallerista}</span> : <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>}</div>
         {url ? <img src={url} className="foto-grande" alt={'Sobre ' + t.nro_sobre} /> : <div className="sin-foto">Sin foto</div>}
         <label className="btn suave archivo">{subiendo ? 'Subiendo…' : url ? 'Cambiar foto' : 'Agregar foto'}
           <input type="file" accept="image/*" capture="environment" onChange={nuevaFoto} hidden />
@@ -250,7 +313,7 @@ function Detalle({ t, cerrar, recargar }) {
             <table className="tabla compacta">
               <tbody>
                 {talleres.map((x, i) => (
-                  <tr key={x.id}><td>{fechaCorta(x.fecha + 'T12:00')}</td><td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b>{x.talleristas?.nombre}</b></td></tr>
+                  <tr key={x.id}><td>{fechaCorta(x.fecha + 'T12:00')}</td><td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b className={t.estado === 'taller' && i === talleres.length - 1 ? 'nombre-actual' : 'nombre-pasado'}>{x.talleristas?.nombre}</b></td></tr>
                 ))}
               </tbody>
             </table>
