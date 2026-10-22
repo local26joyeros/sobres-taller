@@ -104,3 +104,9 @@ export async function fotoUrl(path) {
   const { data } = await sb.storage.from('fotos').createSignedUrl(path, 3600)
   return data?.signedUrl || null
 }
+
+// ---- Colores: cada cliente y cada tallerista tiene uno propio (fijo, según su número) ----
+const PALETA = ['#2d5a87', '#a33a2c', '#2f6b45', '#6a4a8c', '#b0721c', '#1f7a7a', '#8c3b6e', '#56682a', '#b5532f', '#3b4f9c', '#7a5a3a', '#c0396b']
+export const colorDe = (id, desfase = 0) => (id == null ? '#8a8379' : PALETA[(Number(id) * 7 + desfase) % PALETA.length])
+export const colorCliente = (id) => colorDe(id, 3)
+export const colorTallerista = (id) => colorDe(id)

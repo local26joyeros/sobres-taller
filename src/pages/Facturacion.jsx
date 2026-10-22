@@ -17,7 +17,7 @@ export default function Facturacion({ params }) {
     const ids = (data || []).map((t) => t.id)
     const porSobre = {}
     if (ids.length) {
-      const { data: its } = await sb.from('items').select('trabajo_id,numero,descripcion,estado,presupuesto_hechura,presupuesto_moneda,presupuesto_metal,presupuesto_peso,presupuesto_respuesta').in('trabajo_id', ids).order('numero')
+      const { data: its } = await sb.from('items').select('trabajo_id,numero,nombre,descripcion,estado,presupuesto_hechura,presupuesto_moneda,presupuesto_metal,presupuesto_peso,presupuesto_respuesta').in('trabajo_id', ids).order('numero')
       ;(its || []).forEach((i) => { (porSobre[i.trabajo_id] ||= []).push(i) })
     }
     const txt = (v) => (v == null ? '' : String(Math.round(v * 1000) / 1000).replace('.', ','))
@@ -90,7 +90,7 @@ export default function Facturacion({ params }) {
                     <td data-l="Sobre"><b>{f.t.nro_sobre}</b>
                       {f.items.map((i) => (
                         <div key={i.numero} className={'meta' + (i.estado === 'rechazado' ? ' rechazo' : '')}>
-                          {f.items.length > 1 ? `${i.numero}. ` : ''}{i.descripcion || 'Sin descripción'}
+                          {f.items.length > 1 ? `${i.numero}. ` : ''}{[i.nombre, i.descripcion].filter(Boolean).join(': ') || 'Sin descripción'}
                           {i.estado === 'rechazado' ? ' (presupuesto rechazado)' : i.presupuesto_respuesta === 'aceptado' ? ' (presupuesto aprobado)' : ''}
                         </div>
                       ))}

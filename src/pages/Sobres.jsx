@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista } from '../lib'
+import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, colorCliente, colorTallerista } from '../lib'
+import { useTiempoReal } from '../tiempoReal'
 import { subirFotoItem, agregarFotoItem } from '../foto'
 import { CamposPresupuesto, SelectorMoneda } from '../components'
 
@@ -30,7 +31,13 @@ const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : 
 const dm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '')
 // "$ 15.000,00 + 2,5 g oro 18k"
 const textoPago = (x) => [x.pago != null ? hechura(x.pago, x.pago_moneda) : null, x.pago_oro18 != null ? gramos(x.pago_oro18) + ' oro 18k' : null].filter(Boolean).join(' + ')
-const nombreItem = (it, total) => (total > 1 ? `Ítem ${it.numero}` : 'Trabajo') + (it.descripcion ? ': ' + it.descripcion : '')
+const nombreItem = (it, total) => it.nombre || (total > 1 ? `Ítem ${it.numero}` : 'Trabajo')
+
+// Nombre del tallerista con su color
+function ChipTall({ id, nombre }) {
+  if (!nombre) return <span className="chip est-taller">Sin tallerista</span>
+  return <span className="chip chip-tall" style={{ background: colorTallerista(id) }}>{nombre}</span>
+}
 
 export default function Sobres({ params }) {
   const tab = PESTANAS.find((p) => p[0] === params.get('tab')) || PESTANAS[0]
@@ -44,8 +51,8 @@ export default function Sobres({ params }) {
   const [cargando, setCargando] = useState(true)
   const [marcados, setMarcados] = useState([])
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
+  const cargar = useCallback(async (silencioso) => {
+    if (!silencioso) setCargando(true)
     let q = sb.from('vista_trabajos').select('*').order('ingresado_en', { ascending: false })
     if (ESTADOS_SOBRE[tab[0]]) q = q.in('estado', ESTADOS_SOBRE[tab[0]])
     if (tab[0] === 'entregados' || tab[0] === 'todos') q = q.limit(300)
@@ -60,7 +67,7 @@ export default function Sobres({ params }) {
     if (ids.length) {
       const [{ data: its }, { data: tr }] = await Promise.all([
         sb.from('items').select('*, talleristas(nombre)').in('trabajo_id', ids).order('numero'),
-        sb.from('traspasos_taller').select('id,item_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id'),
+        sb.from('traspasos_taller').select('id,item_id,tallerista_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').in('trabajo_id', ids).order('fecha').order('id'),
       ])
       const rec = {}
       ;(tr || []).forEach((x) => { (rec[x.item_id] ||= []).push(x) })
@@ -76,6 +83,9 @@ export default function Sobres({ params }) {
 
   const recargarListas = () => cargarListas().then(setListas)
   useEffect(() => { cargar(); setMarcados([]); setDetalleId(null) }, [cargar])
+  // Se actualiza solo cuando cambia algo (sin recargar la página)
+  const [version, setVersion] = useState(0)
+  useTiempoReal(() => { cargar(true); setVersion((v) => v + 1) }, ['trabajos', 'items', 'traspasos_taller', 'talleristas'])
   useEffect(() => { recargarListas() }, [])
 
   async function accion(fn) {
@@ -109,7 +119,7 @@ export default function Sobres({ params }) {
   const visibles = trabajos.filter((t) =>
     (!estadoItemTab || t.items.some((i) => i.estado === estadoItemTab)) &&
     (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || t.items.some((i) => (i.descripcion || '').toLowerCase().includes(b))) &&
-    (!filtroTall || t.items.some((i) => (filtroTall === 'sin' ? !i.tallerista_id : String(i.tallerista_id) === filtroTall) && (tab[0] !== 'taller' || i.estado === 'taller'))))
+    (!filtroTall || t.items.some((i) => String(i.tallerista_id) === filtroTall && (tab[0] !== 'taller' || i.estado === 'taller'))))
 
   const activos = listas.talleristas.filter((x) => x.activo)
   const marcar = (id, si) => setMarcados((m) => (si ? [...m, id] : m.filter((x) => x !== id)))
@@ -149,7 +159,6 @@ export default function Sobres({ params }) {
           {(tab[0] === 'taller' || tab[0] === 'todos') && (
             <select value={filtroTall} onChange={(e) => setFiltroTall(e.target.value)}>
               <option value="">Todos los talleristas</option>
-              <option value="sin">Sin tallerista</option>
               {listas.talleristas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
           )}
@@ -167,7 +176,7 @@ export default function Sobres({ params }) {
       )}
       {error && <div className="error">{error}</div>}
       {tab[0] === 'talleristas' ? (
-        <ResumenTalleristas abrir={(id) => setDetalleId(id)} />
+        <ResumenTalleristas abrir={(id) => setDetalleId(id)} talleristas={listas.talleristas} version={version} />
       ) : cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
         <div className="lista">
           {visibles.map((t) => (
@@ -176,7 +185,7 @@ export default function Sobres({ params }) {
           ))}
         </div>
       )}
-      {detalleId && <DetalleCargado id={detalleId} t={detalle} ctx={ctx} recargar={cargar} cerrar={() => setDetalleId(null)} />}
+      {detalleId && <DetalleCargado id={detalleId} t={detalle} ctx={ctx} recargar={cargar} version={version} cerrar={() => setDetalleId(null)} />}
 
       {pago && (
         <div className="modal-fondo centrado" onClick={() => responderPago(false)}>
@@ -241,7 +250,7 @@ function Recorrido({ it, siempre }) {
         return (
           <span key={x.id} className="paso-envoltura">
             {i > 0 && <span className="flecha">→</span>}
-            <span className={'paso ' + (actual ? 'actual' : 'pasado')}>{x.talleristas?.nombre} <small>{dm(x.fecha)}</small></span>
+            <span className={'paso ' + (actual ? 'actual' : 'pasado')} style={actual ? { background: colorTallerista(x.tallerista_id) } : undefined}>{x.talleristas?.nombre} <small>{dm(x.fecha)}</small></span>
           </span>
         )
       })}
@@ -255,7 +264,7 @@ function ChipSobre({ t }) {
   if (t.estado === 'taller' || t.estado === 'esperando_confirmacion') {
     const nT = its.filter((i) => i.estado === 'taller').length
     const nP = its.filter((i) => i.estado === 'pendiente').length
-    if (its.length === 1 && nT === 1) return its[0].tallerista ? <span className="chip tallerista-actual">{its[0].tallerista}</span> : <span className="chip est-taller">Sin tallerista</span>
+    if (its.length === 1 && nT === 1) return <ChipTall id={its[0].tallerista_id} nombre={its[0].tallerista} />
     if (its.length > 1) {
       return (
         <span className="chips">
@@ -275,14 +284,14 @@ function Tarjeta({ t, ctx, enfocar, abrir, marcado, marcar }) {
     if (error) throw error
   }
   return (
-    <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')}>
+    <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')} style={{ '--cliente': colorCliente(t.cliente_id) }}>
       <div className="sobre-cab" onClick={abrir} role="button">
         {marcado !== null && marcado !== undefined && (
           <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
         )}
         <div className="sobre-titulo">
           <div className="nro">Sobre {t.nro_sobre}</div>
-          <div className="cliente">{t.cliente}</div>
+          <div className="cliente"><span className="punto-cliente" />{t.cliente}</div>
         </div>
         <ChipSobre t={t} />
       </div>
@@ -342,12 +351,13 @@ function ItemFila({ it, total, t, ctx, apagado }) {
   return (
     <div className={'item-fila item-' + it.estado + (apagado ? ' apagado' : '')}>
       <div className="item-linea">
-        <div className="item-desc">{nombreItem(it, total)}</div>
-        {it.estado === 'taller' && total > 1 && (it.tallerista ? <span className="chip tallerista-actual">{it.tallerista}</span> : <span className="chip est-taller">Sin tallerista</span>)}
+        <div className="item-nombre">{nombreItem(it, total)}</div>
+        {it.estado === 'taller' && total > 1 && <ChipTall id={it.tallerista_id} nombre={it.tallerista} />}
         {it.estado === 'pendiente' && total > 1 && <span className="chip est-esperando_confirmacion">Pendiente</span>}
         {it.estado === 'listo' && total > 1 && t.estado !== 'facturado' && t.estado !== 'entregado' && <span className="chip est-listo_para_facturar">Listo</span>}
         {it.estado === 'rechazado' && <span className="chip est-rechazado">Rechazado</span>}
       </div>
+      {it.descripcion && <div className="item-desc" title={it.descripcion}>{it.descripcion}</div>}
       <Recorrido it={it} siempre={total > 1 && it.estado !== 'taller'} />
       {it.presupuesto_hechura != null && it.estado === 'pendiente' && (
         <div className="meta">Presupuesto: {hechura(it.presupuesto_hechura, it.presupuesto_moneda)} · {METALES[it.presupuesto_metal] || '—'}{it.presupuesto_peso != null ? ' ' + gramos(it.presupuesto_peso) : ''}{it.tallerista ? ' · ' + it.tallerista : ''}</div>
@@ -384,101 +394,127 @@ function ItemFila({ it, total, t, ctx, apagado }) {
   )
 }
 
-// ---------- Pestaña Talleristas ----------
-function ResumenTalleristas({ abrir }) {
+// ---------- Pestaña Talleristas: paneles con cuántos sobres tiene cada uno; al tocar uno, su detalle ----------
+function ResumenTalleristas({ abrir, talleristas, version }) {
   const [filas, setFilas] = useState(null)
-  const [abierto, setAbierto] = useState({})
+  const [elegido, setElegido] = useState(null)
 
   useEffect(() => {
     sb.from('traspasos_taller')
-      .select('id,fecha,hasta,pago,pago_moneda,pago_oro18,tallerista_id,talleristas(nombre),items(numero,descripcion,estado),trabajos(id,nro_sobre,clientes(nombre))')
-      .order('fecha', { ascending: false }).order('id', { ascending: false }).limit(1000)
+      .select('id,fecha,hasta,pago,pago_moneda,pago_oro18,tallerista_id,talleristas(nombre),items(numero,nombre,descripcion,estado),trabajos(id,nro_sobre,cliente_id,clientes(nombre))')
+      .order('fecha', { ascending: false }).order('id', { ascending: false }).limit(2000)
       .then(({ data }) => setFilas(data || []))
-  }, [])
+  }, [version])
 
   if (!filas) return <div className="vacio">Cargando…</div>
-  if (!filas.length) return <div className="vacio">Todavía no hay trabajos entregados a talleristas.</div>
 
-  const grupos = {}
-  filas.forEach((x) => { const n = x.talleristas?.nombre || '—'; (grupos[n] ||= []).push(x) })
-  const nombres = Object.keys(grupos).sort((a, b) => a.localeCompare(b))
-  const sobre = (x) => x.trabajos?.nro_sobre + (x.items && x.items.numero > 1 ? `-${x.items.numero}` : '')
+  const porTall = {}
+  filas.forEach((x) => { (porTall[x.tallerista_id] ||= []).push(x) })
+  const actualesDe = (id) => (porTall[id] || []).filter((x) => !x.hasta && x.items?.estado === 'taller')
+  const sobresDe = (id) => new Set(actualesDe(id).map((x) => x.trabajos?.id)).size
+  const lista = talleristas.filter((t) => t.activo || porTall[t.id]).sort((a, b) => sobresDe(b.id) - sobresDe(a.id) || a.nombre.localeCompare(b.nombre))
 
+  if (elegido) {
+    const t = talleristas.find((x) => x.id === elegido)
+    return <DetalleTallerista t={t} filas={porTall[elegido] || []} abrir={abrir} volver={() => setElegido(null)} />
+  }
+  if (!lista.length) return <div className="vacio">Todavía no hay talleristas cargados.</div>
   return (
-    <div className="resumen-talleristas">
-      {nombres.map((n) => {
-        const actuales = grupos[n].filter((x) => !x.hasta && x.items?.estado === 'taller')
-        const terminados = grupos[n].filter((x) => x.hasta)
-        const total = (m) => terminados.filter((x) => x.pago != null && x.pago_moneda === m).reduce((s, x) => s + Number(x.pago), 0)
-        const totalOro = terminados.reduce((s, x) => s + Number(x.pago_oro18 || 0), 0)
-        const verTodos = abierto[n]
+    <div className="paneles-tall">
+      {lista.map((t) => {
+        const n = sobresDe(t.id)
         return (
-          <div key={n} className="card grupo-tallerista">
-            <div className="grupo-cab"><b>{n}</b><span className="meta">{actuales.length} en su taller</span></div>
-            {actuales.length > 0 && (
-              <table className="tabla compacta">
-                <thead><tr><th>Sobre</th><th>Cliente</th><th>Trabajo</th><th className="d">Entregado</th></tr></thead>
-                <tbody>
-                  {actuales.map((x) => (
-                    <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
-                      <td><b>{sobre(x)}</b></td><td>{x.trabajos?.clientes?.nombre}</td><td className="meta">{x.items?.descripcion}</td><td className="d">{dma(x.fecha)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            {terminados.length > 0 && (
-              <>
-                <h4 className="sub">Trabajos que ya salieron</h4>
-                <table className="tabla compacta">
-                  <thead><tr><th>Sobre</th><th className="d">Entregado</th><th className="d">Salió</th><th className="d">Pagado</th></tr></thead>
-                  <tbody>
-                    {(verTodos ? terminados : terminados.slice(0, 8)).map((x) => (
-                      <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
-                        <td><b>{sobre(x)}</b> <span className="meta">{x.items?.descripcion || x.trabajos?.clientes?.nombre}</span></td>
-                        <td className="d">{dma(x.fecha)}</td><td className="d">{dma(x.hasta)}</td>
-                        <td className="d">{x.pago == null && x.pago_oro18 == null ? <span className="meta">Pasó a otro taller</span> : textoPago(x)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr><td colSpan={3}>Total pagado</td><td className="d">
-                      {total('ARS') > 0 && <div>{hechura(total('ARS'), 'ARS')}</div>}
-                      {total('USD') > 0 && <div>{hechura(total('USD'), 'USD')}</div>}
-                      {totalOro > 0 && <div>{gramos(totalOro)} oro 18k</div>}
-                      {!total('ARS') && !total('USD') && !totalOro && '—'}
-                    </td></tr>
-                  </tfoot>
-                </table>
-                {terminados.length > 8 && (
-                  <button className="btn suave" onClick={() => setAbierto({ ...abierto, [n]: !verTodos })}>{verTodos ? 'Ver menos' : `Ver los ${terminados.length}`}</button>
-                )}
-              </>
-            )}
-          </div>
+          <button key={t.id} className="panel-tall" style={{ '--tall': colorTallerista(t.id) }} onClick={() => setElegido(t.id)}>
+            <span className="panel-nombre">{t.nombre}</span>
+            <span className="panel-num">{n}</span>
+            <span className="panel-txt">{n === 1 ? 'sobre en su taller' : 'sobres en su taller'}</span>
+          </button>
         )
       })}
     </div>
   )
 }
 
+function DetalleTallerista({ t, filas, abrir, volver }) {
+  const [verTodos, setVerTodos] = useState(false)
+  const actuales = filas.filter((x) => !x.hasta && x.items?.estado === 'taller')
+  const terminados = filas.filter((x) => x.hasta)
+  const total = (m) => terminados.filter((x) => x.pago != null && x.pago_moneda === m).reduce((s, x) => s + Number(x.pago), 0)
+  const totalOro = terminados.reduce((s, x) => s + Number(x.pago_oro18 || 0), 0)
+  const trabajo = (x) => x.items?.nombre || x.items?.descripcion || ''
+  const sobre = (x) => x.trabajos?.nro_sobre
+
+  return (
+    <div className="detalle-tall">
+      <button className="btn suave volver-tall" onClick={volver}>← Todos los talleristas</button>
+      <div className="card grupo-tallerista" style={{ borderTop: `5px solid ${colorTallerista(t?.id)}` }}>
+        <div className="grupo-cab"><b style={{ color: colorTallerista(t?.id) }}>{t?.nombre}</b><span className="meta">{actuales.length} {actuales.length === 1 ? 'trabajo' : 'trabajos'} en su taller</span></div>
+
+        <h4 className="sub">Tiene ahora</h4>
+        {actuales.length ? (
+          <table className="tabla compacta">
+            <thead><tr><th>Sobre</th><th>Cliente</th><th>Trabajo</th><th className="d">Entregado</th></tr></thead>
+            <tbody>
+              {actuales.map((x) => (
+                <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
+                  <td><b>{sobre(x)}</b></td>
+                  <td><span className="punto-cliente" style={{ background: colorCliente(x.trabajos?.cliente_id) }} />{x.trabajos?.clientes?.nombre}</td>
+                  <td className="meta">{trabajo(x)}</td><td className="d">{dma(x.fecha)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div className="meta">No tiene trabajos en este momento.</div>}
+
+        <h4 className="sub">Tuvo</h4>
+        {terminados.length ? (
+          <>
+            <table className="tabla compacta">
+              <thead><tr><th>Sobre</th><th>Trabajo</th><th className="d">Entregado</th><th className="d">Salió</th><th className="d">Pagado</th></tr></thead>
+              <tbody>
+                {(verTodos ? terminados : terminados.slice(0, 15)).map((x) => (
+                  <tr key={x.id} className="clic" onClick={() => abrir(x.trabajos.id)}>
+                    <td><b>{sobre(x)}</b> <span className="meta">{x.trabajos?.clientes?.nombre}</span></td>
+                    <td className="meta">{trabajo(x)}</td>
+                    <td className="d">{dma(x.fecha)}</td><td className="d">{dma(x.hasta)}</td>
+                    <td className="d">{x.pago == null && x.pago_oro18 == null ? <span className="meta">Pasó a otro taller</span> : textoPago(x)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr><td colSpan={4}>Total pagado</td><td className="d">
+                  {total('ARS') > 0 && <div>{hechura(total('ARS'), 'ARS')}</div>}
+                  {total('USD') > 0 && <div>{hechura(total('USD'), 'USD')}</div>}
+                  {totalOro > 0 && <div>{gramos(totalOro)} oro 18k</div>}
+                  {!total('ARS') && !total('USD') && !totalOro && '—'}
+                </td></tr>
+              </tfoot>
+            </table>
+            {terminados.length > 15 && <button className="btn suave" onClick={() => setVerTodos(!verTodos)}>{verTodos ? 'Ver menos' : `Ver los ${terminados.length}`}</button>}
+          </>
+        ) : <div className="meta">Todavía no terminó ningún trabajo.</div>}
+      </div>
+    </div>
+  )
+}
+
 // ---------- Detalle de un sobre (con sus ítems) ----------
 // Si el sobre no está en la lista cargada (p. ej. desde Talleristas), lo trae.
-function DetalleCargado({ id, t, ctx, recargar, cerrar }) {
+function DetalleCargado({ id, t, ctx, recargar, version, cerrar }) {
   const [sobre, setSobre] = useState(t || null)
   const [items, setItems] = useState(t?.items || null)
   const cargar = useCallback(async () => {
     const [{ data: s }, { data: its }, { data: tr }] = await Promise.all([
       sb.from('vista_trabajos').select('*').eq('id', id).single(),
       sb.from('items').select('*, talleristas(nombre)').eq('trabajo_id', id).order('numero'),
-      sb.from('traspasos_taller').select('id,item_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').eq('trabajo_id', id).order('fecha').order('id'),
+      sb.from('traspasos_taller').select('id,item_id,tallerista_id,fecha,hasta,pago,pago_moneda,pago_oro18,talleristas(nombre)').eq('trabajo_id', id).order('fecha').order('id'),
     ])
     const rec = {}
     ;(tr || []).forEach((x) => { (rec[x.item_id] ||= []).push(x) })
     setSobre(s)
     setItems((its || []).map((it) => ({ ...it, tallerista: it.talleristas?.nombre, talleres: rec[it.id] || [] })))
   }, [id])
-  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => { cargar() }, [cargar, version])
   if (!sobre || !items) return null
   const refrescar = async () => { await cargar(); recargar() }
   return <Detalle t={sobre} items={items} ctx={{ ...ctx, accion: async (fn) => { await ctx.accion(fn); await cargar() } }} recargar={refrescar} cerrar={cerrar} />
@@ -493,9 +529,13 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
     sb.from('historial_estados').select('*').eq('trabajo_id', t.id).order('cambiado_en').then(({ data }) => setHist(data || []))
   }, [t.id, t.estado])
 
+  const [faltan, setFaltan] = useState(false)
   async function agregarItem() {
+    if (!nuevo.nombre.trim() || !nuevo.descripcion.trim() || !nuevo.tallerista.trim()) return setFaltan(true)
+    setFaltan(false)
     const tallId = await resolverTallerista(nuevo.tallerista, ctx.talleristas)
-    await ctx.accion(() => rpc('agregar_item', { p_trabajo: t.id, p_descripcion: nuevo.descripcion, p_tallerista: tallId }))
+    if (!nuevo.nombre.trim() || !nuevo.descripcion.trim() || !nuevo.tallerista.trim()) return setFaltan(true)
+    await ctx.accion(() => rpc('agregar_item', { p_trabajo: t.id, p_nombre: nuevo.nombre, p_descripcion: nuevo.descripcion, p_tallerista: tallId }))
     setNuevo(null)
   }
 
@@ -515,18 +555,20 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
         {editable && (nuevo ? (
           <div className="item-detalle nuevo">
             <b>Nuevo ítem</b>
+            <label>Nombre<input value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} placeholder="Ej.: Anillo con piedra" /></label>
             <label>Descripción<textarea rows={2} value={nuevo.descripcion} onChange={(e) => setNuevo({ ...nuevo, descripcion: e.target.value })} /></label>
             <label>Tallerista
               <input list="tall-nuevo-item" value={nuevo.tallerista} onChange={(e) => setNuevo({ ...nuevo, tallerista: e.target.value })} placeholder="Quién va a hacer el trabajo" />
               <datalist id="tall-nuevo-item">{ctx.talleristas.filter((x) => x.activo).map((x) => <option key={x.id} value={x.nombre} />)}</datalist>
             </label>
+            {faltan && <div className="error">Completá el nombre, la descripción y el tallerista.</div>}
             <div className="botones-par">
               <button className="btn ok" onClick={agregarItem}>Agregar</button>
               <button className="btn suave" onClick={() => setNuevo(null)}>Cancelar</button>
             </div>
           </div>
         ) : (
-          <button className="btn suave" onClick={() => setNuevo({ descripcion: '', tallerista: '' })}>+ Agregar ítem a este sobre</button>
+          <button className="btn suave" onClick={() => setNuevo({ nombre: '', descripcion: '', tallerista: '' })}>+ Agregar ítem a este sobre</button>
         ))}
 
         {t.estado === 'listo_para_facturar' && (
@@ -555,6 +597,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   const [fotos, setFotos] = useState([])
   const [verFoto, setVerFoto] = useState(0)
   const [desc, setDesc] = useState(it.descripcion || '')
+  const [nombre, setNombre] = useState(it.nombre || '')
   const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || 'oro', peso: aTexto(it.presupuesto_peso) })
   const [msg, setMsg] = useState('')
   const [subiendo, setSubiendo] = useState(false)
@@ -567,8 +610,8 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   useEffect(() => { cargarFotos(it.foto_path) }, [it.foto_path, cargarFotos])
 
   async function guardarDesc() {
-    const { error } = await sb.from('items').update({ descripcion: desc.trim() || null }).eq('id', it.id)
-    setMsg(error ? errorMsg(error) : 'Descripción guardada.')
+    const { error } = await sb.from('items').update({ nombre: nombre.trim() || null, descripcion: desc.trim() || null }).eq('id', it.id)
+    setMsg(error ? errorMsg(error) : 'Guardado.')
     recargar()
   }
 
@@ -614,8 +657,10 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   return (
     <div className="item-detalle">
       <div className="item-cab">
-        <b>{total > 1 ? `Ítem ${it.numero}` : 'Trabajo'}</b>
-        <span className={'chip ' + (it.estado === 'taller' && it.tallerista ? 'tallerista-actual' : 'est-' + { pendiente: 'esperando_confirmacion', taller: 'taller', listo: 'listo_para_facturar', rechazado: 'rechazado' }[it.estado])}>{ESTADO_I[it.estado]}</span>
+        <b>{nombreItem(it, total)}</b>
+        {it.estado === 'taller' && it.tallerista
+          ? <ChipTall id={it.tallerista_id} nombre={it.tallerista} />
+          : <span className={'chip est-' + { pendiente: 'esperando_confirmacion', taller: 'taller', listo: 'listo_para_facturar', rechazado: 'rechazado' }[it.estado]}>{ESTADO_I[it.estado]}</span>}
       </div>
       {url ? <img src={url} className="foto-grande" alt={'Ítem ' + it.numero} /> : <div className="sin-foto">Sin foto</div>}
       {fotos.length > 1 && (
@@ -635,10 +680,13 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
           <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'agregar')} hidden />
         </label>
       </div>
+      <label>Nombre
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
+      </label>
       <label>Descripción
         <textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} />
       </label>
-      <button className="btn" onClick={guardarDesc}>Guardar descripción</button>
+      <button className="btn" onClick={guardarDesc}>Guardar nombre y descripción</button>
 
       {it.estado === 'pendiente' && (
         <>
@@ -657,7 +705,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
               {it.talleres.map((x, i) => (
                 <tr key={x.id}>
                   <td>{fechaCorta(x.fecha + 'T12:00')}</td>
-                  <td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b className={it.estado === 'taller' && i === it.talleres.length - 1 ? 'nombre-actual' : 'nombre-pasado'}>{x.talleristas?.nombre}</b></td>
+                  <td>{i === 0 ? 'Entró a ' : 'Pasó a '}<b style={{ color: it.estado === 'taller' && i === it.talleres.length - 1 ? colorTallerista(x.tallerista_id) : '#8a8379' }}>{x.talleristas?.nombre}</b></td>
                   <td className="d meta">{(x.pago != null || x.pago_oro18 != null) ? 'Pagado: ' + textoPago(x) : ''}</td>
                 </tr>
               ))}

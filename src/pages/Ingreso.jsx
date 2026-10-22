@@ -4,7 +4,7 @@ import { subirFotoItem } from '../foto'
 import { CampoTallerista, CamposPresupuesto } from '../components'
 
 let claveItem = 0
-const itemVacio = () => ({ clave: ++claveItem, descripcion: '', tallerista: '', foto: null, preview: null, pres: { hechura: '', moneda: 'ARS', metal: 'oro', peso: '' } })
+const itemVacio = () => ({ clave: ++claveItem, nombre: '', descripcion: '', tallerista: '', foto: null, preview: null, pres: { hechura: '', moneda: 'ARS', metal: 'oro', peso: '' } })
 
 export default function Ingreso() {
   const [listas, setListas] = useState({ clientes: [], talleristas: [] })
@@ -14,6 +14,7 @@ export default function Ingreso() {
   const [items, setItems] = useState([itemVacio()])
   const [msg, setMsg] = useState(null)
   const [guardando, setGuardando] = useState(false)
+  const [faltan, setFaltan] = useState(null) // campos sin completar, para marcarlos
 
   useEffect(() => { cargarListas().then(setListas) }, [])
 
@@ -25,16 +26,38 @@ export default function Ingreso() {
     cambiarItem(clave, { foto: f || null, preview: f ? URL.createObjectURL(f) : null })
   }
 
+  // Todos los campos son obligatorios
+  function revisar() {
+    const f = new Set()
+    if (!sobre.trim()) f.add('sobre')
+    if (!cliente.trim()) f.add('cliente')
+    items.forEach((it) => {
+      if (!it.nombre.trim()) f.add(it.clave + '-nombre')
+      if (!it.descripcion.trim()) f.add(it.clave + '-descripcion')
+      if (!it.tallerista.trim()) f.add(it.clave + '-tallerista')
+      if (!it.foto) f.add(it.clave + '-foto')
+      if (tipo === 'presupuesto') {
+        const h = num(it.pres.hechura), p = num(it.pres.peso)
+        if (h === null || Number.isNaN(h)) f.add(it.clave + '-hechura')
+        if (p === null || Number.isNaN(p)) f.add(it.clave + '-peso')
+      }
+    })
+    return f
+  }
+  const falta = (k) => (faltan?.has(k) ? ' falta' : '')
+
   async function guardar(e) {
     e.preventDefault()
     setMsg(null)
+    const f = revisar()
+    setFaltan(f)
+    if (f.size) return setMsg({ error: 'Faltan completar los campos marcados en rojo.' })
     const nombre = cliente.trim()
-    if (!nombre) return setMsg({ error: 'Elegí o escribí el cliente.' })
 
     // Validar presupuestos de cada ítem
     const datos = []
     for (const [i, it] of items.entries()) {
-      const d = { descripcion: it.descripcion.trim() }
+      const d = { nombre: it.nombre.trim(), descripcion: it.descripcion.trim() }
       if (tipo === 'presupuesto') {
         const h = num(it.pres.hechura), p = num(it.pres.peso)
         if (h === null || Number.isNaN(h)) return setMsg({ error: `Cargá la hechura del ítem ${i + 1}.` })
@@ -72,7 +95,7 @@ export default function Ingreso() {
       setMsg(fallas.length
         ? { error: `El sobre ${sobre.trim()} se guardó, pero no se pudo subir la foto del ítem ${fallas.join(', ')}.` }
         : { ok: `Sobre ${sobre.trim()} ingresado para ${c.nombre}${items.length > 1 ? ` con ${items.length} ítems` : ''}.` })
-      setSobre(''); setCliente(''); setItems([itemVacio()])
+      setSobre(''); setCliente(''); setItems([itemVacio()]); setFaltan(null)
       cargarListas().then(setListas)
     } catch (e) {
       setMsg({ error: errorMsg(e) })
@@ -83,13 +106,13 @@ export default function Ingreso() {
   return (
     <section>
       <h1>Nuevo ingreso</h1>
-      <form className="card form" onSubmit={guardar}>
+      <form className="card form" onSubmit={guardar} noValidate>
         <div className="fila2">
           <label>Número de sobre
-            <input value={sobre} onChange={(e) => setSobre(e.target.value)} required inputMode="numeric" autoFocus />
+            <input className={falta('sobre')} value={sobre} onChange={(e) => setSobre(e.target.value)} inputMode="numeric" autoFocus />
           </label>
           <label>Cliente
-            <input list="lista-clientes" value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Escribí para buscar o agregar" required />
+            <input className={falta('cliente')} list="lista-clientes" value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Escribí para buscar o agregar" />
             <datalist id="lista-clientes">
               {listas.clientes.map((c) => <option key={c.id} value={c.nombre} />)}
             </datalist>
@@ -117,15 +140,22 @@ export default function Ingreso() {
                 <b>Ítem {i + 1}</b>
                 {items.length > 1 && <button type="button" className="btn-link" onClick={() => quitarItem(it.clave)} aria-label={'Quitar ítem ' + (i + 1)}>Quitar</button>}
               </div>
-              <label>Descripción del trabajo
-                <textarea rows={2} value={it.descripcion} onChange={(e) => cambiarItem(it.clave, { descripcion: e.target.value })} placeholder="Ej.: anillo, soldar" />
+              <label>Nombre del ítem
+                <input className={falta(it.clave + '-nombre')} value={it.nombre} onChange={(e) => cambiarItem(it.clave, { nombre: e.target.value })} placeholder="Ej.: Anillo con piedra" />
               </label>
-              {tipo === 'presupuesto' && <CamposPresupuesto v={it.pres} set={(pres) => cambiarItem(it.clave, { pres })} />}
+              <label>Descripción del trabajo
+                <textarea className={falta(it.clave + '-descripcion')} rows={2} value={it.descripcion} onChange={(e) => cambiarItem(it.clave, { descripcion: e.target.value })} placeholder="Ej.: soldar el aro" />
+              </label>
+              {tipo === 'presupuesto' && (
+                <div className={(falta(it.clave + '-hechura') ? ' falta-hechura' : '') + (falta(it.clave + '-peso') ? ' falta-peso' : '')}>
+                  <CamposPresupuesto v={it.pres} set={(pres) => cambiarItem(it.clave, { pres })} />
+                </div>
+              )}
               <div className="fila2">
-                <label>Tallerista
+                <label className={falta(it.clave + '-tallerista')}>Tallerista
                   <CampoTallerista id={'tall-ing-' + it.clave} valor={it.tallerista} onChange={(v) => cambiarItem(it.clave, { tallerista: v })} talleristas={listas.talleristas} placeholder="Quién va a hacer el trabajo" />
                 </label>
-                <label>Foto
+                <label className={falta(it.clave + '-foto')}>Foto
                   <input type="file" accept="image/*" capture="environment" onChange={(e) => elegirFoto(it.clave, e)} />
                 </label>
               </div>
