@@ -389,3 +389,9 @@ label.falta { color: var(--rojo); }
 .cambiar-cliente { align-self: flex-start; padding: .35rem .8rem; font-size: .9rem; }
 .cambio-cliente { display: flex; flex-direction: column; gap: .5rem; padding: .8rem; background: #fcfbf8; border: 1px solid var(--linea); border-radius: var(--radio); }
 .eliminar-sobre { margin-top: 1rem; align-self: flex-start; }
+
+/* Foto agrandada */
+.foto-grande.clic { cursor: zoom-in; }
+.foto-ampliada { position: fixed; inset: 0; z-index: 50; background: #000000e6; display: flex; align-items: center; justify-content: center; padding: 1rem; cursor: zoom-out; }
+.foto-ampliada img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+.cerrar-foto { position: absolute; top: .6rem; right: .9rem; background: none; border: 0; color: #fff; font-size: 2.4rem; line-height: 1; cursor: pointer; }

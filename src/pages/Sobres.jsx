@@ -120,6 +120,20 @@ export default function Sobres({ params }) {
     (!estadoItemTab || t.items.some((i) => i.estado === estadoItemTab)) &&
     (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || t.items.some((i) => (i.descripcion || '').toLowerCase().includes(b))) &&
     (!filtroTall || t.items.some((i) => String(i.tallerista_id) === filtroTall && (tab[0] !== 'taller' || i.estado === 'taller'))))
+  if (tab[0] === 'todos' || tab[0] === 'taller') {
+    // Desde cuándo está en lo de un tallerista (el ítem que hace más tiempo)
+    const desde = (t) => {
+      const f = t.items.filter((i) => i.estado === 'taller').map((i) => (i.talleres || []).at(-1)?.fecha || t.ingresado_en.slice(0, 10))
+      return f.length ? f.sort()[0] : null
+    }
+    const grupo = (t) => (t.items.some((i) => i.estado === 'taller') ? 0
+      : t.estado === 'esperando_confirmacion' ? 1
+      : t.estado === 'listo_para_facturar' ? 2
+      : t.estado === 'facturado' || t.estado === 'rechazado' ? 3 : 4)
+    visibles.sort((a, b) => grupo(a) - grupo(b)
+      || (grupo(a) === 0 ? desde(a).localeCompare(desde(b)) : 0)
+      || b.ingresado_en.localeCompare(a.ingresado_en))
+  }
 
   const activos = listas.talleristas.filter((x) => x.activo)
   const marcar = (id, si) => setMarcados((m) => (si ? [...m, id] : m.filter((x) => x !== id)))
@@ -529,13 +543,13 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
   }, [t.id, t.estado])
 
   // Cambiar el cliente del sobre
-  const [cliente, setCliente] = useState(null)
+  const [cliente, setCliente] = useState(null) // { sel: id del cliente o 'nuevo', nuevo: nombre }
   async function guardarCliente() {
-    const nombre = cliente.trim()
+    let c = cliente.sel === 'nuevo' ? null : ctx.clientes.find((x) => String(x.id) === String(cliente.sel))
+    const nombre = c ? c.nombre : cliente.nuevo.trim()
     if (!nombre) return
-    let c = ctx.clientes.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase())
+    if (!c) c = ctx.clientes.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase()) || null
     if (c?.id === t.cliente_id) return setCliente(null)
-    if (!c && !(await ctx.preguntar(`"${nombre}" no está registrado. ¿Lo agrego como cliente nuevo?`))) return
     if (!(await ctx.preguntar(`¿Estás seguro de pasar el sobre ${t.nro_sobre} de ${t.cliente} a ${nombre}?`))) return
     await ctx.accion(async () => {
       if (!c) {
@@ -546,6 +560,7 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
       await rpc('cambiar_cliente_sobre', { p_trabajo: t.id, p_cliente: c.id })
     })
     setCliente(null)
+    ctx.cerrarDetalle()
   }
 
   // Eliminar el sobre
@@ -580,11 +595,14 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
         <h2>Sobre {t.nro_sobre}</h2>
         <div className="meta"><span className="punto-cliente" style={{ background: colorCliente(t.cliente_id) }} /><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <ChipSobre t={{ ...t, items }} /></div>
         {cliente === null ? (
-          <button className="btn suave cambiar-cliente" onClick={() => setCliente(t.cliente)}>Cambiar cliente</button>
+          <button className="btn suave cambiar-cliente" onClick={() => setCliente({ sel: String(t.cliente_id), nuevo: '' })}>Cambiar cliente</button>
         ) : (
           <div className="cambio-cliente">
-            <input list="clientes-detalle" value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nombre del cliente" autoFocus />
-            <datalist id="clientes-detalle">{ctx.clientes.map((c) => <option key={c.id} value={c.nombre} />)}</datalist>
+            <select value={cliente.sel} onChange={(e) => setCliente({ ...cliente, sel: e.target.value })} aria-label="Cliente" autoFocus>
+              {ctx.clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              <option value="nuevo">+ Cliente nuevo…</option>
+            </select>
+            {cliente.sel === 'nuevo' && <input value={cliente.nuevo} onChange={(e) => setCliente({ ...cliente, nuevo: e.target.value })} placeholder="Nombre del cliente nuevo" autoFocus />}
             <div className="botones-par">
               <button className="btn ok" onClick={guardarCliente}>Aceptar</button>
               <button className="btn suave" onClick={() => setCliente(null)}>Cancelar</button>
@@ -641,6 +659,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   const [principal, setPrincipal] = useState(it.foto_path)
   const [fotos, setFotos] = useState([])
   const [verFoto, setVerFoto] = useState(0)
+  const [ampliada, setAmpliada] = useState(false)
   const [desc, setDesc] = useState(it.descripcion || '')
   const [nombre, setNombre] = useState(it.nombre || '')
   const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || 'oro', peso: aTexto(it.presupuesto_peso) })
@@ -707,7 +726,13 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
           ? <ChipTall id={it.tallerista_id} nombre={it.tallerista} />
           : <span className={'chip est-' + { pendiente: 'esperando_confirmacion', taller: 'taller', listo: 'listo_para_facturar', rechazado: 'rechazado' }[it.estado]}>{ESTADO_I[it.estado]}</span>}
       </div>
-      {url ? <img src={url} className="foto-grande" alt={'Ítem ' + it.numero} /> : <div className="sin-foto">Sin foto</div>}
+      {url ? <img src={url} className="foto-grande clic" alt={'Ítem ' + it.numero} onClick={() => setAmpliada(true)} title="Tocá para agrandar" /> : <div className="sin-foto">Sin foto</div>}
+      {ampliada && url && (
+        <div className="foto-ampliada" onClick={() => setAmpliada(false)}>
+          <img src={url} alt={'Ítem ' + it.numero} />
+          <button className="cerrar-foto" aria-label="Cerrar">×</button>
+        </div>
+      )}
       {fotos.length > 1 && (
         <div className="miniaturas">
           {fotos.map((f, i) => (
