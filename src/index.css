@@ -384,3 +384,8 @@ label.falta { color: var(--rojo); }
 .item-desc { line-height: 1.35; max-height: 2.7em; min-height: 2.7em; }
 .item-ingreso .fila2 > label { min-width: 0; }
 .item-ingreso .fila2 input { width: 100%; min-width: 0; }
+
+/* Detalle: cambiar cliente y eliminar */
+.cambiar-cliente { align-self: flex-start; padding: .35rem .8rem; font-size: .9rem; }
+.cambio-cliente { display: flex; flex-direction: column; gap: .5rem; padding: .8rem; background: #fcfbf8; border: 1px solid var(--linea); border-radius: var(--radio); }
+.eliminar-sobre { margin-top: 1rem; align-self: flex-start; }

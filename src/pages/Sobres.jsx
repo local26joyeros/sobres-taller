@@ -141,7 +141,7 @@ export default function Sobres({ params }) {
     })
   }
 
-  const ctx = { talleristas: listas.talleristas, accion, preguntar, preguntarPago, elegirTallerista }
+  const ctx = { talleristas: listas.talleristas, clientes: listas.clientes, accion, preguntar, preguntarPago, elegirTallerista, cerrarDetalle: () => setDetalleId(null) }
   const detalle = trabajos.find((t) => t.id === detalleId)
 
   return (
@@ -358,7 +358,6 @@ function ItemFila({ it, total, t, ctx, apagado }) {
         {it.estado === 'rechazado' && <span className="chip est-rechazado">Rechazado</span>}
       </div>
       {it.descripcion && <div className="item-desc" title={it.descripcion}>{it.descripcion}</div>}
-      <Recorrido it={it} siempre={total > 1 && it.estado !== 'taller'} />
       {it.presupuesto_hechura != null && it.estado === 'pendiente' && (
         <div className="meta">Presupuesto: {hechura(it.presupuesto_hechura, it.presupuesto_moneda)} · {METALES[it.presupuesto_metal] || '—'}{it.presupuesto_peso != null ? ' ' + gramos(it.presupuesto_peso) : ''}{it.tallerista ? ' · ' + it.tallerista : ''}</div>
       )}
@@ -529,6 +528,39 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
     sb.from('historial_estados').select('*').eq('trabajo_id', t.id).order('cambiado_en').then(({ data }) => setHist(data || []))
   }, [t.id, t.estado])
 
+  // Cambiar el cliente del sobre
+  const [cliente, setCliente] = useState(null)
+  async function guardarCliente() {
+    const nombre = cliente.trim()
+    if (!nombre) return
+    let c = ctx.clientes.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase())
+    if (c?.id === t.cliente_id) return setCliente(null)
+    if (!c && !(await ctx.preguntar(`"${nombre}" no está registrado. ¿Lo agrego como cliente nuevo?`))) return
+    if (!(await ctx.preguntar(`¿Estás seguro de pasar el sobre ${t.nro_sobre} de ${t.cliente} a ${nombre}?`))) return
+    await ctx.accion(async () => {
+      if (!c) {
+        const { data, error } = await sb.from('clientes').insert({ nombre }).select('id,nombre').single()
+        if (error) throw error
+        c = data
+      }
+      await rpc('cambiar_cliente_sobre', { p_trabajo: t.id, p_cliente: c.id })
+    })
+    setCliente(null)
+  }
+
+  // Eliminar el sobre
+  async function eliminar() {
+    const extra = ['facturado', 'entregado'].includes(t.estado) ? ' Ya está facturado: también se quita de la cuenta del cliente.' : ''
+    if (!(await ctx.preguntar(`¿Estás seguro de eliminar el sobre ${t.nro_sobre} con todos sus ítems y fotos? No se puede deshacer.${extra}`))) return
+    await ctx.accion(async () => {
+      await rpc('eliminar_sobre', { p_trabajo: t.id })
+      // Borrar las fotos guardadas del sobre
+      const { data: archivos } = await sb.storage.from('fotos').list(String(t.id), { limit: 1000 })
+      if (archivos?.length) await sb.storage.from('fotos').remove(archivos.map((a) => `${t.id}/${a.name}`))
+    })
+    ctx.cerrarDetalle()
+  }
+
   const [faltan, setFaltan] = useState(false)
   async function agregarItem() {
     if (!nuevo.nombre.trim() || !nuevo.descripcion.trim() || !nuevo.tallerista.trim()) return setFaltan(true)
@@ -546,7 +578,19 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
       <div className="modal card detalle" onClick={(e) => e.stopPropagation()}>
         <button className="cerrar" onClick={cerrar} aria-label="Cerrar">×</button>
         <h2>Sobre {t.nro_sobre}</h2>
-        <div className="meta"><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <ChipSobre t={{ ...t, items }} /></div>
+        <div className="meta"><span className="punto-cliente" style={{ background: colorCliente(t.cliente_id) }} /><a href={'#/clientes?id=' + t.cliente_id}>{t.cliente}</a> · {TIPOS[t.tipo]} · <ChipSobre t={{ ...t, items }} /></div>
+        {cliente === null ? (
+          <button className="btn suave cambiar-cliente" onClick={() => setCliente(t.cliente)}>Cambiar cliente</button>
+        ) : (
+          <div className="cambio-cliente">
+            <input list="clientes-detalle" value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nombre del cliente" autoFocus />
+            <datalist id="clientes-detalle">{ctx.clientes.map((c) => <option key={c.id} value={c.nombre} />)}</datalist>
+            <div className="botones-par">
+              <button className="btn ok" onClick={guardarCliente}>Aceptar</button>
+              <button className="btn suave" onClick={() => setCliente(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
 
         {items.map((it) => (
           <ItemDetalle key={it.id} it={it} t={t} total={items.length} ctx={ctx} recargar={recargar} />
@@ -585,6 +629,7 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
             ))}
           </tbody>
         </table>
+        <button className="btn peligro eliminar-sobre" onClick={eliminar}>Eliminar sobre</button>
       </div>
     </div>
   )
@@ -700,6 +745,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
       {it.talleres.length > 0 && (
         <>
           <h4 className="sub">Talleres</h4>
+          <Recorrido it={it} siempre />
           <table className="tabla compacta">
             <tbody>
               {it.talleres.map((x, i) => (
