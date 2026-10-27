@@ -31,6 +31,11 @@ const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : 
 const dm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '')
 // "$ 15.000,00 + 2,5 g oro 18k"
 const textoPago = (x) => [x.pago != null ? hechura(x.pago, x.pago_moneda) : null, x.pago_oro18 != null ? gramos(x.pago_oro18) + ' oro 18k' : null].filter(Boolean).join(' + ')
+// "$ 20.000,00 · Oro 1,5 g" (lo que esté cargado)
+const textoPresupuesto = (it) => [
+  it.presupuesto_hechura != null ? hechura(it.presupuesto_hechura, it.presupuesto_moneda) : null,
+  it.presupuesto_metal ? METALES[it.presupuesto_metal] + (it.presupuesto_peso != null ? ' ' + gramos(it.presupuesto_peso) : '') : null,
+].filter(Boolean).join(' · ')
 const nombreItem = (it, total) => it.nombre || (total > 1 ? `Ítem ${it.numero}` : 'Trabajo')
 
 // Nombre del tallerista con su color
@@ -358,7 +363,11 @@ function ItemFila({ it, total, t, ctx, apagado }) {
   }
 
   const responder = async (aceptado) => {
-    if (!aceptado && !(await ctx.preguntar(`¿Marcar el presupuesto de ${quien} como rechazado?`))) return
+    const pres = textoPresupuesto(it)
+    const texto = aceptado
+      ? `¿El cliente aceptó el presupuesto de ${quien}${pres ? ` (${pres})` : ''}? Pasa al taller${it.tallerista ? ' de ' + it.tallerista : ''}.`
+      : `¿El cliente rechazó el presupuesto de ${quien}?`
+    if (!(await ctx.preguntar(texto))) return
     ctx.accion(() => rpc('responder_item', { p_item: it.id, p_aceptado: aceptado }))
   }
 
@@ -373,7 +382,7 @@ function ItemFila({ it, total, t, ctx, apagado }) {
       </div>
       {it.descripcion && <div className="item-desc" title={it.descripcion}>{it.descripcion}</div>}
       {it.presupuesto_hechura != null && it.estado === 'pendiente' && (
-        <div className="meta">Presupuesto: {hechura(it.presupuesto_hechura, it.presupuesto_moneda)} · {METALES[it.presupuesto_metal] || '—'}{it.presupuesto_peso != null ? ' ' + gramos(it.presupuesto_peso) : ''}{it.tallerista ? ' · ' + it.tallerista : ''}</div>
+        <div className="meta">Presupuesto: {textoPresupuesto(it) || 'sin datos'}{it.tallerista ? ' · ' + it.tallerista : ''}</div>
       )}
       {it.estado === 'listo' && t.estado === 'listo_para_facturar' && (ultimo?.pago != null || ultimo?.pago_oro18 != null) && (
         <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{textoPago(ultimo)}</b></div>
@@ -662,7 +671,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   const [ampliada, setAmpliada] = useState(false)
   const [desc, setDesc] = useState(it.descripcion || '')
   const [nombre, setNombre] = useState(it.nombre || '')
-  const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || 'oro', peso: aTexto(it.presupuesto_peso) })
+  const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || '', peso: aTexto(it.presupuesto_peso) })
   const [msg, setMsg] = useState('')
   const [subiendo, setSubiendo] = useState(false)
 
@@ -680,9 +689,9 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   }
 
   async function guardarPres() {
-    const h = num(pres.hechura), p = num(pres.peso)
-    if (h === null || Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
-    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: pres.moneda, presupuesto_metal: pres.metal, presupuesto_peso: p }).eq('id', it.id)
+    const h = num(pres.hechura), p = pres.metal ? num(pres.peso) : null
+    if (Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
+    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: h === null ? null : pres.moneda, presupuesto_metal: pres.metal || null, presupuesto_peso: p }).eq('id', it.id)
     setMsg(error ? errorMsg(error) : 'Presupuesto actualizado.')
     recargar()
   }

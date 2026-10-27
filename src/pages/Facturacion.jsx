@@ -23,18 +23,19 @@ export default function Facturacion({ params }) {
     const txt = (v) => (v == null ? '' : String(Math.round(v * 1000) / 1000).replace('.', ','))
     setFilas((data || []).map((t) => {
       const items = porSobre[t.id] || []
-      const acept = items.filter((i) => i.presupuesto_respuesta === 'aceptado' && i.presupuesto_hechura != null)
-      const moneda = t.hechura_moneda || acept[0]?.presupuesto_moneda || 'ARS'
-      const metal = t.metal || acept[0]?.presupuesto_metal || 'oro'
+      const acept = items.filter((i) => i.presupuesto_respuesta === 'aceptado')
+      const conHechura = acept.filter((i) => i.presupuesto_hechura != null)
+      const moneda = t.hechura_moneda || conHechura[0]?.presupuesto_moneda || 'ARS'
+      const metal = t.metal || acept.find((i) => i.presupuesto_metal)?.presupuesto_metal || 'oro'
       const hechura = t.hechura != null ? t.hechura
-        : acept.length ? acept.filter((i) => i.presupuesto_moneda === moneda).reduce((s, i) => s + Number(i.presupuesto_hechura), 0) : null
+        : conHechura.length ? conHechura.filter((i) => i.presupuesto_moneda === moneda).reduce((s, i) => s + Number(i.presupuesto_hechura), 0) : null
       const pesos = acept.filter((i) => i.presupuesto_metal === metal && i.presupuesto_peso != null)
       const peso = t.peso != null ? t.peso : pesos.length ? pesos.reduce((s, i) => s + Number(i.presupuesto_peso), 0) : null
       return {
         t, items,
         sel: elegidosInicio.length ? elegidosInicio.includes(String(t.id)) : true,
         hechura: txt(hechura), moneda, metal, peso: txt(peso),
-        mixto: acept.some((i) => i.presupuesto_moneda !== moneda),
+        mixto: conHechura.some((i) => i.presupuesto_moneda !== moneda),
       }
     }))
     setCargando(false)

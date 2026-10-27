@@ -24,14 +24,17 @@ export function CamposPresupuesto({ v, set }) {
         </div>
       </label>
       <label>Metal
-        <select value={v.metal} onChange={(e) => set({ ...v, metal: e.target.value })}>
+        <select value={v.metal} onChange={(e) => set({ ...v, metal: e.target.value, peso: e.target.value ? v.peso : '' })}>
+          <option value="">Sin metal</option>
           {Object.entries(METALES).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
         </select>
       </label>
-      <label>{etiquetaPeso(v.metal)}
-        <input inputMode="decimal" value={v.peso} onChange={(e) => set({ ...v, peso: e.target.value })} />
-        {v.metal === 'oro' && f != null && !Number.isNaN(f) && <span className="ayuda">Oro fino: {gramos(f)}</span>}
-      </label>
+      {v.metal ? (
+        <label>{etiquetaPeso(v.metal)}
+          <input inputMode="decimal" value={v.peso} onChange={(e) => set({ ...v, peso: e.target.value })} />
+          {v.metal === 'oro' && f != null && !Number.isNaN(f) && <span className="ayuda">Oro fino: {gramos(f)}</span>}
+        </label>
+      ) : <div />}
     </div>
   )
 }

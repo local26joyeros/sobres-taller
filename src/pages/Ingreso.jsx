@@ -4,7 +4,7 @@ import { subirFotoItem } from '../foto'
 import { CampoTallerista, CamposPresupuesto } from '../components'
 
 let claveItem = 0
-const itemVacio = () => ({ clave: ++claveItem, nombre: '', descripcion: '', tallerista: '', foto: null, preview: null, pres: { hechura: '', moneda: 'ARS', metal: 'oro', peso: '' } })
+const itemVacio = () => ({ clave: ++claveItem, nombre: '', descripcion: '', tallerista: '', foto: null, preview: null, pres: { hechura: '', moneda: 'ARS', metal: '', peso: '' } })
 
 export default function Ingreso() {
   const [listas, setListas] = useState({ clientes: [], talleristas: [] })
@@ -37,9 +37,9 @@ export default function Ingreso() {
       if (!it.tallerista.trim()) f.add(it.clave + '-tallerista')
       if (!it.foto) f.add(it.clave + '-foto')
       if (tipo === 'presupuesto') {
-        const h = num(it.pres.hechura), p = num(it.pres.peso)
-        if (h === null || Number.isNaN(h)) f.add(it.clave + '-hechura')
-        if (p === null || Number.isNaN(p)) f.add(it.clave + '-peso')
+        // Pueden quedar en blanco, pero si se escriben tienen que ser números
+        if (Number.isNaN(num(it.pres.hechura))) f.add(it.clave + '-hechura')
+        if (Number.isNaN(num(it.pres.peso))) f.add(it.clave + '-peso')
       }
     })
     return f
@@ -59,10 +59,9 @@ export default function Ingreso() {
     for (const [i, it] of items.entries()) {
       const d = { nombre: it.nombre.trim(), descripcion: it.descripcion.trim() }
       if (tipo === 'presupuesto') {
-        const h = num(it.pres.hechura), p = num(it.pres.peso)
-        if (h === null || Number.isNaN(h)) return setMsg({ error: `Cargá la hechura del ítem ${i + 1}.` })
-        if (Number.isNaN(p)) return setMsg({ error: `El peso del ítem ${i + 1} no es un número válido.` })
-        Object.assign(d, { presupuesto_hechura: h, presupuesto_moneda: it.pres.moneda, presupuesto_metal: it.pres.metal, presupuesto_peso: p })
+        const h = num(it.pres.hechura), p = it.pres.metal ? num(it.pres.peso) : null
+        if (Number.isNaN(h) || Number.isNaN(p)) return setMsg({ error: `Revisá la hechura y el peso del ítem ${i + 1}.` })
+        Object.assign(d, { presupuesto_hechura: h, presupuesto_moneda: h === null ? null : it.pres.moneda, presupuesto_metal: it.pres.metal || null, presupuesto_peso: p })
       }
       datos.push(d)
     }
