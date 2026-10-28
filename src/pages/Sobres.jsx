@@ -587,11 +587,17 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
 
   const [faltan, setFaltan] = useState(false)
   async function agregarItem() {
-    if (!nuevo.nombre.trim() || !nuevo.descripcion.trim() || !nuevo.tallerista.trim()) return setFaltan(true)
+    if (!nuevo.nombre.trim() || !nuevo.descripcion.trim() || !nuevo.tallerista.trim()) return setFaltan('Completá el nombre, la descripción y el tallerista.')
+    const h = num(nuevo.pres.hechura), p = nuevo.pres.metal ? num(nuevo.pres.peso) : null
+    if (Number.isNaN(h) || Number.isNaN(p)) return setFaltan('Revisá la hechura y el peso.')
     setFaltan(false)
     const tallId = await resolverTallerista(nuevo.tallerista, ctx.talleristas)
-    if (!nuevo.nombre.trim() || !nuevo.descripcion.trim() || !nuevo.tallerista.trim()) return setFaltan(true)
-    await ctx.accion(() => rpc('agregar_item', { p_trabajo: t.id, p_nombre: nuevo.nombre, p_descripcion: nuevo.descripcion, p_tallerista: tallId }))
+    const esPres = t.tipo === 'presupuesto'
+    await ctx.accion(() => rpc('agregar_item_sobre', { p: {
+      trabajo_id: t.id, nombre: nuevo.nombre, descripcion: nuevo.descripcion, tallerista_id: tallId,
+      presupuesto_hechura: esPres ? h : null, presupuesto_moneda: esPres && h !== null ? nuevo.pres.moneda : null,
+      presupuesto_metal: esPres ? nuevo.pres.metal || null : null, presupuesto_peso: esPres ? p : null,
+    } }))
     setNuevo(null)
   }
 
@@ -632,14 +638,20 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
               <input list="tall-nuevo-item" value={nuevo.tallerista} onChange={(e) => setNuevo({ ...nuevo, tallerista: e.target.value })} placeholder="Quién va a hacer el trabajo" />
               <datalist id="tall-nuevo-item">{ctx.talleristas.filter((x) => x.activo).map((x) => <option key={x.id} value={x.nombre} />)}</datalist>
             </label>
-            {faltan && <div className="error">Completá el nombre, la descripción y el tallerista.</div>}
+            {t.tipo === 'presupuesto' && (
+              <>
+                <h4 className="sub">Presupuesto (queda pendiente hasta que el cliente lo acepte)</h4>
+                <CamposPresupuesto v={nuevo.pres} set={(pres) => setNuevo({ ...nuevo, pres })} />
+              </>
+            )}
+            {faltan && <div className="error">{faltan}</div>}
             <div className="botones-par">
               <button className="btn ok" onClick={agregarItem}>Agregar</button>
               <button className="btn suave" onClick={() => setNuevo(null)}>Cancelar</button>
             </div>
           </div>
         ) : (
-          <button className="btn suave" onClick={() => setNuevo({ nombre: '', descripcion: '', tallerista: '' })}>+ Agregar ítem a este sobre</button>
+          <button className="btn suave" onClick={() => setNuevo({ nombre: '', descripcion: '', tallerista: '', pres: { hechura: '', moneda: 'ARS', metal: '', peso: '' } })}>+ Agregar ítem a este sobre</button>
         ))}
 
         {t.estado === 'listo_para_facturar' && (
@@ -669,6 +681,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   const [fotos, setFotos] = useState([])
   const [verFoto, setVerFoto] = useState(0)
   const [ampliada, setAmpliada] = useState(false)
+  const [tallPend, setTallPend] = useState(it.tallerista_id ? String(it.tallerista_id) : '')
   const [desc, setDesc] = useState(it.descripcion || '')
   const [nombre, setNombre] = useState(it.nombre || '')
   const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || '', peso: aTexto(it.presupuesto_peso) })
@@ -691,7 +704,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   async function guardarPres() {
     const h = num(pres.hechura), p = pres.metal ? num(pres.peso) : null
     if (Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
-    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: h === null ? null : pres.moneda, presupuesto_metal: pres.metal || null, presupuesto_peso: p }).eq('id', it.id)
+    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: h === null ? null : pres.moneda, presupuesto_metal: pres.metal || null, presupuesto_peso: p, tallerista_id: tallPend ? Number(tallPend) : null }).eq('id', it.id)
     setMsg(error ? errorMsg(error) : 'Presupuesto actualizado.')
     recargar()
   }
@@ -771,7 +784,13 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
         <>
           <h4 className="sub">Presupuesto</h4>
           <CamposPresupuesto v={pres} set={setPres} />
-          <button className="btn" onClick={guardarPres}>Guardar presupuesto</button>
+          <label>Tallerista (cuando el cliente lo acepte)
+            <select value={tallPend} onChange={(e) => setTallPend(e.target.value)}>
+              <option value="">Sin elegir</option>
+              {ctx.talleristas.filter((x) => x.activo || x.id === it.tallerista_id).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select>
+          </label>
+          <button className="btn" onClick={guardarPres}>Guardar presupuesto y tallerista</button>
         </>
       )}
       {msg && <div className="ok">{msg}</div>}

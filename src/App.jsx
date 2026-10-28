@@ -8,7 +8,7 @@ import Clientes from './pages/Clientes'
 import Talleristas from './pages/Talleristas'
 
 const PAGINAS = [
-  ['sobres', 'Inicio'],
+  ['sobres', 'Sobres'],
   ['ingreso', 'Nuevo ingreso'],
   ['facturacion', 'Facturación'],
   ['facturados', 'Facturados'],
