@@ -315,7 +315,10 @@ function Tarjeta({ t, abrir, marcado, marcar }) {
         {marcado !== null && marcado !== undefined && (
           <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
         )}
-        <div className="nro">Sobre {t.nro_sobre}</div>
+        <div>
+          <div className="nro">Sobre {t.nro_sobre}</div>
+          <div className="tile-cliente">{t.cliente}</div>
+        </div>
       </div>
       <div className="tile-cuerpo">
         {lineas.map((l) => (

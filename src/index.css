@@ -447,3 +447,4 @@ main section > .btn.primario, main section > .acciones-detalle .btn.primario { b
   main, main h1, main h2, main .hoja-cab, main .titulo-cliente h1 { color: #000 !important; }
   body { background: #fff !important; }
 }
+.tile-cliente { font-weight: 600; font-size: .95rem; opacity: .95; margin-top: .1rem; }
