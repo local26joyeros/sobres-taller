@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, colorCliente, colorTallerista } from '../lib'
 import { useTiempoReal } from '../tiempoReal'
-import { subirFotoItem, agregarFotoItem } from '../foto'
+import { subirFotoItem, agregarFotoItem, subirFoto, agregarFoto } from '../foto'
+import { ListaClientes } from './Clientes'
 import { CamposPresupuesto, SelectorMoneda } from '../components'
 
 // Pestañas: las de ítems (taller, pendientes) muestran el sobre si alguno de sus ítems está en ese estado
@@ -13,6 +14,7 @@ const PESTANAS = [
   ['entregar', 'Para entregar'],
   ['entregados', 'Entregados'],
   ['talleristas', 'Talleristas'],
+  ['clientes', 'Clientes'],
 ]
 const ESTADOS_SOBRE = {
   taller: ['taller', 'esperando_confirmacion'],
@@ -62,7 +64,7 @@ export default function Sobres({ params }) {
     if (ESTADOS_SOBRE[tab[0]]) q = q.in('estado', ESTADOS_SOBRE[tab[0]])
     if (tab[0] === 'entregados' || tab[0] === 'todos') q = q.limit(300)
     const [{ data, error }, { data: itemsActivos }, { data: listos }] = await Promise.all([
-      tab[0] === 'talleristas' ? Promise.resolve({ data: [] }) : q,
+      tab[0] === 'talleristas' || tab[0] === 'clientes' ? Promise.resolve({ data: [] }) : q,
       sb.from('items').select('trabajo_id,estado').in('estado', ['taller', 'pendiente']),
       sb.from('trabajos').select('id').eq('estado', 'listo_para_facturar'),
     ])
@@ -95,7 +97,7 @@ export default function Sobres({ params }) {
 
   async function accion(fn) {
     setError('')
-    try { await fn(); await cargar(); recargarListas() } catch (e) { setError(errorMsg(e)) }
+    try { await fn(); await cargar(); recargarListas(); return true } catch (e) { setError(errorMsg(e)); return false }
   }
 
   // Ventana de confirmación "Sí" / "No"
@@ -172,7 +174,7 @@ export default function Sobres({ params }) {
           </a>
         ))}
       </div>
-      {tab[0] !== 'talleristas' && (
+      {tab[0] !== 'talleristas' && tab[0] !== 'clientes' && (
         <div className="filtros">
           {tab[0] === 'todos' && <input placeholder="Buscar por sobre, cliente o descripción" value={buscar} onChange={(e) => setBuscar(e.target.value)} />}
           {(tab[0] === 'taller' || tab[0] === 'todos') && (
@@ -196,7 +198,20 @@ export default function Sobres({ params }) {
       {error && <div className="error">{error}</div>}
       {tab[0] === 'talleristas' ? (
         <ResumenTalleristas abrir={(id) => setDetalleId(id)} talleristas={listas.talleristas} version={version} />
-      ) : cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
+      ) : tab[0] === 'clientes' ? (
+        <ListaClientes sinTitulo />
+      ) : cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : tab[0] === 'todos' ? (
+        <div className="grupos-cliente">
+          {porCliente(visibles).map((g) => (
+            <div key={g.id} className="grupo-cliente">
+              <div className="grupo-cliente-cab"><span className="punto-cliente" style={{ background: colorCliente(g.id) }} />{g.nombre}<span className="meta">{g.sobres.length} {g.sobres.length === 1 ? 'sobre' : 'sobres'}</span></div>
+              <div className="lista">
+                {g.sobres.map((t) => <Tarjeta key={t.id} t={t} abrir={() => setDetalleId(t.id)} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
         <div className="lista">
           {visibles.map((t) => (
             <Tarjeta key={t.id} t={t} abrir={() => setDetalleId(t.id)}
@@ -255,6 +270,98 @@ export default function Sobres({ params }) {
       )}
     </section>
   )
+}
+
+// Agrupa los sobres por cliente: cada grupo ordenado por fecha de ingreso (los en taller primero)
+function porCliente(sobres) {
+  const g = {}
+  sobres.forEach((t) => { (g[t.cliente_id] ||= { id: t.cliente_id, nombre: t.cliente, sobres: [] }).sobres.push(t) })
+  const grupos = Object.values(g)
+  const orden = (t) => (t.items.some((i) => i.estado === 'taller') ? 0 : t.estado === 'esperando_confirmacion' ? 1 : t.estado === 'listo_para_facturar' ? 2 : 3)
+  grupos.forEach((x) => x.sobres.sort((a, b) => orden(a) - orden(b) || a.ingresado_en.localeCompare(b.ingresado_en)))
+  return grupos.sort((a, b) => a.nombre.localeCompare(b.nombre))
+}
+
+// ---------- Fotos (del sobre o de un ítem): ver grande, agregar, cambiar y borrar con ✕ ----------
+function Galeria({ cargarFotos, subir, agregar, borrar, ctx, vacia, sinCambiar }) {
+  const [fotos, setFotos] = useState(null) // [{ path, url, principal, id }]
+  const [ver, setVer] = useState(0)
+  const [ampliada, setAmpliada] = useState(false)
+  const [subiendo, setSubiendo] = useState(false)
+  const recargar = useCallback(async () => setFotos(await cargarFotos()), [cargarFotos])
+  useEffect(() => { recargar() }, [recargar])
+
+  async function nueva(e, modo) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setSubiendo(true)
+    try {
+      if (modo === 'cambiar' || !fotos?.length) { await subir(f); await recargar(); setVer(0) }
+      else { await agregar(f); const n = fotos.length; await recargar(); setVer(n) }
+    } catch (er) { window.alert(errorMsg(er)) }
+    setSubiendo(false)
+  }
+  async function quitar(foto) {
+    if (!(await ctx.preguntar('¿Borrar esta foto?'))) return
+    try { await borrar(foto); setVer(0); await recargar() } catch (er) { window.alert(errorMsg(er)) }
+  }
+
+  if (!fotos) return null
+  const actual = fotos[ver] || fotos[0]
+  return (
+    <div className="galeria">
+      {actual ? (
+        <div className="foto-con-x">
+          <img src={actual.url} className="foto-grande clic" alt="Foto" onClick={() => setAmpliada(true)} title="Tocá para agrandar" />
+          <button className="quitar-foto" onClick={() => quitar(actual)} aria-label="Borrar foto">×</button>
+        </div>
+      ) : vacia}
+      {ampliada && actual && (
+        <div className="foto-ampliada" onClick={() => setAmpliada(false)}>
+          <img src={actual.url} alt="Foto" />
+          <button className="cerrar-foto" aria-label="Cerrar">×</button>
+        </div>
+      )}
+      {fotos.length > 1 && (
+        <div className="miniaturas">
+          {fotos.map((f, i) => (
+            <button key={f.path} className={'miniatura' + (i === ver ? ' sel' : '')} onClick={() => setVer(i)}><img src={f.url} alt={'Foto ' + (i + 1)} /></button>
+          ))}
+        </div>
+      )}
+      <div className="botones-foto">
+        {fotos.length > 0 && !sinCambiar && (
+          <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Cambiar foto'}
+            <input type="file" accept="image/*" capture="environment" onChange={(e) => nueva(e, 'cambiar')} hidden />
+          </label>
+        )}
+        <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Agregar foto'}
+          <input type="file" accept="image/*" capture="environment" onChange={(e) => nueva(e, 'agregar')} hidden />
+        </label>
+      </div>
+    </div>
+  )
+}
+
+// Fotos guardadas: principal (en la tabla) + adicionales (trabajo_fotos)
+async function leerFotos(principal, filtroExtras) {
+  const { data } = await filtroExtras(sb.from('trabajo_fotos').select('id,path')).order('id')
+  const lista = [...(principal ? [{ path: principal, principal: true }] : []), ...(data || []).map((x) => ({ path: x.path, id: x.id }))]
+  return Promise.all(lista.map(async (f) => ({ ...f, url: await fotoUrl(f.path) })))
+}
+// Borra una foto; si era la principal, la siguiente pasa a ser la principal
+async function borrarFoto(foto, tabla, id, extras) {
+  if (foto.principal) {
+    const sig = extras.find((x) => !x.principal)
+    const { error } = await sb.from(tabla).update({ foto_path: sig ? sig.path : null }).eq('id', id)
+    if (error) throw error
+    if (sig) await sb.from('trabajo_fotos').delete().eq('id', sig.id)
+  } else {
+    const { error } = await sb.from('trabajo_fotos').delete().eq('id', foto.id)
+    if (error) throw error
+  }
+  await sb.storage.from('fotos').remove([foto.path])
 }
 
 // ---------- Recorrido de talleres de un ítem: verde = está ahí ahora, gris = ya salió ----------
@@ -521,10 +628,15 @@ function DetalleCargado({ id, t, ctx, recargar, version, cerrar }) {
   useEffect(() => { cargar() }, [cargar, version])
   if (!sobre || !items) return null
   const refrescar = async () => { await cargar(); recargar() }
-  return <Detalle t={sobre} items={items} ctx={{ ...ctx, accion: async (fn) => { await ctx.accion(fn); await cargar() } }} recargar={refrescar} cerrar={cerrar} />
+  // Después de cada cambio (aceptar, pasar de taller, listo, etc.) se cierra el sobre y se vuelve al panel
+  return <Detalle t={sobre} items={items} ctx={{ ...ctx, accion: async (fn) => { const ok = await ctx.accion(fn); if (ok) cerrar(); else await cargar(); return ok } }} recargar={refrescar} cerrar={cerrar} />
 }
 
 function Detalle({ t, items, ctx, recargar, cerrar }) {
+  const cargarFotosSobre = useCallback(async () => {
+    const { data } = await sb.from('trabajos').select('foto_path').eq('id', t.id).single()
+    return leerFotos(data?.foto_path, (q) => q.eq('trabajo_id', t.id).is('item_id', null))
+  }, [t.id])
   const [hist, setHist] = useState([])
   const [nuevo, setNuevo] = useState(null)
   const editable = !['facturado', 'entregado'].includes(t.estado)
@@ -607,6 +719,18 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
           </div>
         )}
 
+        <div className="fotos-sobre-detalle">
+          <h4 className="sub">Fotos del sobre</h4>
+          <Galeria ctx={ctx} sinCambiar
+            cargarFotos={cargarFotosSobre}
+            subir={(f) => subirFoto(t.id, f)} agregar={(f) => agregarFoto(t.id, f)}
+            borrar={async (foto) => {
+              const extras = await leerFotos(null, (q) => q.eq('trabajo_id', t.id).is('item_id', null))
+              await borrarFoto(foto, 'trabajos', t.id, extras)
+            }}
+            vacia={<div className="meta">Sin fotos del sobre.</div>} />
+        </div>
+
         {items.map((it) => (
           <ItemDetalle key={it.id} it={it} t={t} total={items.length} ctx={ctx} recargar={recargar} />
         ))}
@@ -659,9 +783,6 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
           </tbody>
         </table>
         <button className="btn peligro eliminar-sobre" onClick={eliminar}>Eliminar sobre</button>
-        <div className="pie-detalle">
-          <button className="btn primario" onClick={cerrar}>Listo</button>
-        </div>
       </div>
     </div>
   )
@@ -670,56 +791,28 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
 const aTexto = (v) => (v == null ? '' : String(v).replace('.', ','))
 
 function ItemDetalle({ it, t, total, ctx, recargar }) {
-  const [principal, setPrincipal] = useState(it.foto_path)
-  const [fotos, setFotos] = useState([])
-  const [verFoto, setVerFoto] = useState(0)
-  const [ampliada, setAmpliada] = useState(false)
   const [tallPend, setTallPend] = useState(it.tallerista_id ? String(it.tallerista_id) : '')
   const [desc, setDesc] = useState(it.descripcion || '')
   const [nombre, setNombre] = useState(it.nombre || '')
   const [pres, setPres] = useState({ hechura: aTexto(it.presupuesto_hechura), moneda: it.presupuesto_moneda || 'ARS', metal: it.presupuesto_metal || '', peso: aTexto(it.presupuesto_peso) })
   const [msg, setMsg] = useState('')
-  const [subiendo, setSubiendo] = useState(false)
-
-  const cargarFotos = useCallback(async (ppal) => {
-    const { data } = await sb.from('trabajo_fotos').select('id,path').eq('item_id', it.id).order('id')
-    const paths = [ppal, ...(data || []).map((x) => x.path)].filter(Boolean)
-    setFotos(await Promise.all(paths.map(async (p) => ({ key: p, url: await fotoUrl(p) }))))
+  const cargarFotosItem = useCallback(async () => {
+    const { data } = await sb.from('items').select('foto_path').eq('id', it.id).single()
+    return leerFotos(data?.foto_path, (q) => q.eq('item_id', it.id))
   }, [it.id])
-  useEffect(() => { cargarFotos(it.foto_path) }, [it.foto_path, cargarFotos])
 
   async function guardarDesc() {
     const { error } = await sb.from('items').update({ nombre: nombre.trim() || null, descripcion: desc.trim() || null }).eq('id', it.id)
-    setMsg(error ? errorMsg(error) : 'Guardado.')
-    recargar()
+    if (error) return setMsg(errorMsg(error))
+    recargar(); ctx.cerrarDetalle()
   }
 
   async function guardarPres() {
     const h = num(pres.hechura), p = pres.metal ? num(pres.peso) : null
     if (Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
     const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: h === null ? null : pres.moneda, presupuesto_metal: pres.metal || null, presupuesto_peso: p, tallerista_id: tallPend ? Number(tallPend) : null }).eq('id', it.id)
-    setMsg(error ? errorMsg(error) : 'Presupuesto actualizado.')
-    recargar()
-  }
-
-  // cambiar = reemplaza la foto principal · agregar = suma otra
-  async function nuevaFoto(e, modo) {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    setSubiendo(true)
-    try {
-      if (modo === 'cambiar' || !principal) {
-        const p = await subirFotoItem(it, f)
-        setPrincipal(p); await cargarFotos(p); setVerFoto(0)
-        setMsg(modo === 'cambiar' ? 'Foto cambiada.' : 'Foto agregada.')
-      } else {
-        await agregarFotoItem(it, f)
-        await cargarFotos(principal); setVerFoto(fotos.length)
-        setMsg('Foto agregada.')
-      }
-    } catch (er) { setMsg(errorMsg(er)) }
-    setSubiendo(false)
+    if (error) return setMsg(errorMsg(error))
+    recargar(); ctx.cerrarDetalle()
   }
 
   async function devolver() {
@@ -730,7 +823,6 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
     ctx.accion(() => rpc('devolver_item', { p_item: it.id, p_tallerista: tall.id }))
   }
 
-  const url = fotos[verFoto]?.url || fotos[0]?.url
   const ESTADO_I = { pendiente: 'Pendiente', taller: it.tallerista ? it.tallerista : 'En taller', listo: 'Listo', rechazado: 'Presupuesto rechazado' }
 
   return (
@@ -745,30 +837,10 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
         <div className="acciones-item-detalle"><AccionesItem it={it} total={total} t={t} ctx={ctx} /></div>
       )}
       {it.presupuesto_hechura != null || it.presupuesto_metal ? <div className="meta">Presupuesto: {textoPresupuesto(it)}{it.presupuesto_respuesta ? ` · ${it.presupuesto_respuesta === 'aceptado' ? 'aceptado' : 'rechazado'}` : ''}</div> : null}
-      {url ? <img src={url} className="foto-grande clic" alt={'Ítem ' + it.numero} onClick={() => setAmpliada(true)} title="Tocá para agrandar" /> : <div className="sin-foto">Sin foto</div>}
-      {ampliada && url && (
-        <div className="foto-ampliada" onClick={() => setAmpliada(false)}>
-          <img src={url} alt={'Ítem ' + it.numero} />
-          <button className="cerrar-foto" aria-label="Cerrar">×</button>
-        </div>
-      )}
-      {fotos.length > 1 && (
-        <div className="miniaturas">
-          {fotos.map((f, i) => (
-            <button key={f.key} className={'miniatura' + (i === verFoto ? ' sel' : '')} onClick={() => setVerFoto(i)}><img src={f.url} alt={'Foto ' + (i + 1)} /></button>
-          ))}
-        </div>
-      )}
-      <div className="botones-foto">
-        {principal && (
-          <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Cambiar foto'}
-            <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'cambiar')} hidden />
-          </label>
-        )}
-        <label className="btn suave archivo">{subiendo ? 'Subiendo…' : 'Agregar foto'}
-          <input type="file" accept="image/*" capture="environment" onChange={(e) => nuevaFoto(e, 'agregar')} hidden />
-        </label>
-      </div>
+      <Galeria ctx={ctx} cargarFotos={cargarFotosItem}
+        subir={(f) => subirFotoItem(it, f)} agregar={(f) => agregarFotoItem(it, f)}
+        borrar={async (foto) => { const extras = await leerFotos(null, (q) => q.eq('item_id', it.id)); await borrarFoto(foto, 'items', it.id, extras) }}
+        vacia={null} />
       <label>Nombre
         <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
       </label>

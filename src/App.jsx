@@ -72,7 +72,6 @@ export default function App() {
       <header className="barra no-print">
         <button className="hamburguesa" onClick={() => setMenu(true)} aria-label="Abrir menú">☰</button>
         <div className="marca">Trabajos <span>Local 26</span></div>
-        <div className="seccion-actual">{pagina !== 'sobres' && PAGINAS.find(([k]) => k === pagina)?.[1]}</div>
       </header>
       <div className={'cajon-fondo no-print' + (menu ? ' abierto' : '')} onClick={() => setMenu(false)} />
       <nav className={'cajon no-print' + (menu ? ' abierto' : '')} aria-hidden={!menu}>
@@ -80,8 +79,9 @@ export default function App() {
           <div className="marca">Trabajos <span>Local 26</span></div>
           <button className="cerrar-cajon" onClick={() => setMenu(false)} aria-label="Cerrar menú">×</button>
         </div>
+        <a href="#/sobres" className={pagina === 'sobres' ? 'activo' : ''} onClick={() => setMenu(false)}>Inicio</a>
         {PAGINAS.map(([k, t]) => (
-          <a key={k} href={'#/' + k} className={pagina === k ? 'activo' : ''} onClick={() => setMenu(false)}>{t}</a>
+          <a key={k} href={'#/' + k + (k === 'sobres' ? '?tab=todos' : '')} className={pagina === k && k !== 'sobres' ? 'activo' : ''} onClick={() => setMenu(false)}>{t}</a>
         ))}
         <button className="salir" onClick={() => sb.auth.signOut()}>Salir</button>
       </nav>

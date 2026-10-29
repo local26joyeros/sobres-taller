@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { sb, METALES, cargarListas, errorMsg, fecha, fechaCorta, gramos, hechura, plata } from '../lib'
 
+const COLS = [['hechuras', 'Hechuras ($)', 'p'], ['dolares', 'Dólares', 'p'], ['oro_fino', 'Oro fino', 'g'], ['granalla', 'Granalla', 'g'], ['platino', 'Platino', 'g'], ['plata_fina', 'Plata fina', 'g']]
+const valor = (tipo, v) => (!v ? '—' : tipo === 'g' ? gramos(v) : plata(v))
+
 const hoy = () => new Date().toISOString().slice(0, 10)
 const haceDias = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10)
 
@@ -16,6 +19,7 @@ export default function Facturados({ params }) {
   const [filas, setFilas] = useState([])
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [saldos, setSaldos] = useState([])
 
   useEffect(() => {
     sb.from('facturas').select('id,facturado_en').order('id', { ascending: false }).limit(100).then(({ data }) => setFacturas(data || []))
@@ -36,6 +40,22 @@ export default function Facturados({ params }) {
       const { data, error } = await q
       if (error) setError(errorMsg(error))
       setFilas(data || [])
+      // Saldos de cada cliente: lo facturado acá, el saldo anterior y el actualizado
+      const ids = (data || []).map((r) => r.id)
+      const clis = [...new Set((data || []).map((r) => r.cliente_id))]
+      if (ids.length) {
+        const { data: movs } = await sb.from('movimientos_cuenta').select('*').in('cliente_id', clis).order('id')
+        const res = clis.map((cid) => {
+          const delCliente = (movs || []).filter((m) => m.cliente_id === cid)
+          const fact = delCliente.filter((m) => m.tipo === 'facturacion' && ids.includes(m.trabajo_id))
+          const primero = fact.length ? Math.min(...fact.map((m) => m.id)) : Infinity
+          const suma = (lista) => Object.fromEntries(COLS.map(([k]) => [k, lista.reduce((s, m) => s + Number(m[k] || 0), 0)]))
+          const facturado = suma(fact), anterior = suma(delCliente.filter((m) => m.id < primero && !fact.includes(m)))
+          const actualizado = Object.fromEntries(COLS.map(([k]) => [k, anterior[k] + facturado[k]]))
+          return { cid, nombre: (data || []).find((r) => r.cliente_id === cid)?.cliente, facturado, anterior, actualizado }
+        })
+        setSaldos(res)
+      } else setSaldos([])
       setCargando(false)
     })()
   }, [factura, desde, hasta, cliente, moneda])
@@ -89,7 +109,7 @@ export default function Facturados({ params }) {
         {error && <div className="error">{error}</div>}
         {cargando ? <div className="vacio">Cargando…</div> : filas.length === 0 ? <div className="vacio">No hay trabajos facturados con estos filtros.</div> : (
           <div className="tabla-scroll">
-            <table className="tabla impresion">
+            <table className="tabla impresion fact">
               <thead>
                 <tr>
                   <th>N.º sobre</th>
@@ -130,6 +150,26 @@ export default function Facturados({ params }) {
             </table>
           </div>
         )}
+
+        {!cargando && saldos.map((c) => {
+          const cols = COLS.filter(([k]) => c.anterior[k] || c.facturado[k] || c.actualizado[k])
+          if (!cols.length) return null
+          return (
+            <div key={c.cid} className="saldo-cliente">
+              <h3>Cuenta de {c.nombre}</h3>
+              <table className="tabla impresion fact">
+                <thead><tr><th></th>{cols.map(([k, t]) => <th key={k} className="d">{t}</th>)}</tr></thead>
+                <tbody>
+                  <tr><td>Lo facturado ahora</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.facturado[k])}</td>)}</tr>
+                  <tr><td>Saldo anterior</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.anterior[k])}</td>)}</tr>
+                </tbody>
+                <tfoot>
+                  <tr><td>Saldo total actualizado</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.actualizado[k])}</td>)}</tr>
+                </tfoot>
+              </table>
+            </div>
+          )
+        })}
       </div>
     </section>
   )

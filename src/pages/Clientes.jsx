@@ -23,7 +23,7 @@ export default function Clientes({ params }) {
   return id ? <Cuenta id={Number(id)} /> : <ListaClientes />
 }
 
-function ListaClientes() {
+export function ListaClientes({ sinTitulo }) {
   const [filas, setFilas] = useState([])
   const [buscar, setBuscar] = useState('')
   const [nuevo, setNuevo] = useState({ nombre: '', telefono: '' })
@@ -49,7 +49,7 @@ function ListaClientes() {
 
   return (
     <section>
-      <h1>Clientes</h1>
+      {!sinTitulo && <h1>Clientes</h1>}
       <form className="card mini-form" onSubmit={agregar}>
         <input placeholder="Nombre del cliente nuevo" value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} required />
         <input placeholder="Teléfono (opcional)" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} />
@@ -90,6 +90,7 @@ function Cuenta({ id }) {
   const [edit, setEdit] = useState(null)
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
+  const [formMov, setFormMov] = useState(false)
 
   const cargar = useCallback(async () => {
     const [c, s, m, t] = await Promise.all([
@@ -123,6 +124,7 @@ function Cuenta({ id }) {
     if (error) return setError(errorMsg(error))
     setForm({ ...vacio, tipo: form.tipo })
     setOk('Movimiento registrado.')
+    setFormMov(false)
     cargar()
   }
 
@@ -205,7 +207,9 @@ function Cuenta({ id }) {
         {movs.length === 0 && <div className="vacio">Sin movimientos. Si este cliente ya tenía saldo, cargalo abajo como “Saldo inicial”.</div>}
       </div>
 
-      <form className="card form no-print" onSubmit={registrar}>
+      {ok && !formMov && <div className="ok no-print">{ok}</div>}
+      {!formMov && <button className="btn primario no-print abrir-mov" onClick={() => { setFormMov(true); setOk('') }}>Registrar movimiento</button>}
+      {formMov && <form className="card form no-print" onSubmit={registrar}>
         <h2>Registrar movimiento</h2>
         <div className="opciones">
           {[['pago', 'Pago'], ['apertura', 'Saldo inicial'], ['ajuste', 'Ajuste']].map(([k, t]) => (
@@ -231,7 +235,8 @@ function Cuenta({ id }) {
         {error && <div className="error">{error}</div>}
         {ok && <div className="ok">{ok}</div>}
         <button className="btn primario">Registrar</button>
-      </form>
+        <button type="button" className="btn suave" onClick={() => setFormMov(false)}>Cancelar</button>
+      </form>}
 
       {sobres.length > 0 && (
         <div className="no-print">

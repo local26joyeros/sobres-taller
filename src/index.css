@@ -448,3 +448,46 @@ main section > .btn.primario, main section > .acciones-detalle .btn.primario { b
   body { background: #fff !important; }
 }
 .tile-cliente { font-weight: 600; font-size: .95rem; opacity: .95; margin-top: .1rem; }
+
+/* Facturados: columnas centradas (el guion queda centrado con el título) */
+.tabla.fact th.d, .tabla.fact td.d { text-align: center; }
+.saldo-cliente { margin-top: 1.4rem; }
+.saldo-cliente h3 { margin: 0 0 .5rem; }
+main .saldo-cliente h3 { color: #f6f1e8; }
+@media print {
+  @page { margin: 22mm 14mm 16mm; }
+  .hoja { padding-top: 8mm; }
+  .hoja-cab { margin-bottom: 16pt; padding-bottom: 8pt; }
+  .saldo-cliente { margin-top: 18pt; break-inside: avoid; }
+  main .saldo-cliente h3 { color: #000 !important; }
+}
+
+/* Pestañas sin desplazamiento: pasan a otra línea si no entran */
+.pestanas { flex-wrap: wrap; overflow-x: visible; row-gap: .1rem; }
+.pestanas a { padding: .55rem .7rem; }
+
+/* Sobres agrupados por cliente */
+.grupos-cliente { display: flex; flex-direction: column; gap: 1.3rem; }
+.grupo-cliente-cab { display: flex; align-items: center; gap: .2rem; font-weight: 600; font-size: 1.05rem; margin-bottom: .55rem; color: #f6f1e8; }
+.grupo-cliente-cab .meta { margin-left: .6rem; font-weight: 400; color: #a8a094; }
+
+/* Fotos con ✕ para borrar */
+.foto-con-x { position: relative; }
+.foto-con-x .quitar-foto, .foto-elegida .quitar-foto {
+  position: absolute; top: .4rem; right: .4rem; width: 2rem; height: 2rem; border-radius: 50%;
+  border: 0; background: #000000b3; color: #fff; font-size: 1.3rem; line-height: 1; cursor: pointer;
+}
+.galeria { display: flex; flex-direction: column; gap: .5rem; }
+.fotos-sobre { display: flex; flex-direction: column; gap: .5rem; padding: .9rem; border: 1px solid var(--linea); border-radius: var(--radio); background: #fcfbf8; }
+.fotos-sobre.falta { border-color: var(--rojo); background: var(--rojo-claro); }
+.fotos-elegidas { display: flex; flex-wrap: wrap; gap: .6rem; }
+.foto-elegida { position: relative; }
+.foto-elegida img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--linea); display: block; }
+.foto-elegida .quitar-foto { top: .25rem; right: .25rem; width: 1.7rem; height: 1.7rem; font-size: 1.1rem; }
+.agregar-foto { width: 110px; height: 110px; border: 2px dashed #cfc6b8; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer; color: var(--suave); font-weight: 600; flex-direction: row; }
+.agregar-foto.chica { width: 90px; height: 90px; }
+.foto-item { display: flex; flex-direction: column; gap: .3rem; }
+.foto-item .etiqueta { font-weight: 500; font-size: .9rem; }
+.fotos-sobre-detalle { display: flex; flex-direction: column; gap: .4rem; }
+.abrir-mov { margin: 1rem 0; }
+main .filtros .btn.primario, main .abrir-mov.btn.primario { background: #e0b84f; border-color: #e0b84f; color: #1f1c18; }
