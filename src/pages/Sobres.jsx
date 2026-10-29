@@ -13,6 +13,7 @@ const PESTANAS = [
   ['listos', 'Listos para facturar'],
   ['entregar', 'Para entregar'],
   ['entregados', 'Entregados'],
+  ['facturados', 'Facturados'],
   ['talleristas', 'Talleristas'],
   ['clientes', 'Clientes'],
 ]
@@ -22,6 +23,7 @@ const ESTADOS_SOBRE = {
   listos: ['listo_para_facturar'],
   entregar: ['facturado', 'rechazado'],
   entregados: ['entregado'],
+  facturados: ['facturado', 'entregado'],
 }
 const ESTADO_ITEM_TAB = { taller: 'taller', pendientes: 'pendiente' }
 
@@ -60,9 +62,9 @@ export default function Sobres({ params }) {
 
   const cargar = useCallback(async (silencioso) => {
     if (!silencioso) setCargando(true)
-    let q = sb.from('vista_trabajos').select('*').order('ingresado_en', { ascending: false })
+    let q = sb.from('vista_trabajos').select('*').order(tab[0] === 'facturados' ? 'facturado_en' : 'ingresado_en', { ascending: false })
     if (ESTADOS_SOBRE[tab[0]]) q = q.in('estado', ESTADOS_SOBRE[tab[0]])
-    if (tab[0] === 'entregados' || tab[0] === 'todos') q = q.limit(300)
+    if (tab[0] === 'entregados' || tab[0] === 'todos' || tab[0] === 'facturados') q = q.limit(300)
     const [{ data, error }, { data: itemsActivos }, { data: listos }] = await Promise.all([
       tab[0] === 'talleristas' || tab[0] === 'clientes' ? Promise.resolve({ data: [] }) : q,
       sb.from('items').select('trabajo_id,estado').in('estado', ['taller', 'pendiente']),
@@ -434,7 +436,7 @@ function Tarjeta({ t, abrir, marcado, marcar }) {
           </div>
         ))}
         {pendientes > 0 && <div className="tile-linea"><b>Presupuesto pendiente</b>{pendientes > 1 && <span>{pendientes} ítems</span>}</div>}
-        {!lineas.length && !pendientes && otro && <div className="tile-linea"><b>{otro}</b></div>}
+        {!lineas.length && !pendientes && otro && <div className="tile-linea"><b>{otro}</b>{t.factura_id && <span>Factura N.º {t.factura_id} · {dma(t.facturado_en?.slice(0, 10))}</span>}</div>}
       </div>
     </div>
   )
@@ -760,6 +762,12 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
           <button className="btn suave" onClick={() => setNuevo({ nombre: '', descripcion: '', tallerista: '', pres: { hechura: '', moneda: 'ARS', metal: '', peso: '' } })}>+ Agregar ítem a este sobre</button>
         ))}
 
+        {t.factura_id && (
+          <div className="acciones-detalle">
+            <div><b>Factura N.º {t.factura_id}</b><div className="meta">Facturado {fecha(t.facturado_en)}</div></div>
+            <button className="btn primario" onClick={() => ir('facturados', { factura: t.factura_id })}>Ver factura</button>
+          </div>
+        )}
         {(t.estado === 'facturado' || t.estado === 'rechazado') && (
           <div className="acciones-detalle">
             <button className="btn primario" onClick={async () => (await ctx.preguntar(`¿Confirmás que entregaste el sobre ${t.nro_sobre}?`)) && ctx.accion(async () => {
