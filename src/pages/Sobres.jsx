@@ -6,7 +6,7 @@ import { CamposPresupuesto, SelectorMoneda } from '../components'
 
 // Pestañas: las de ítems (taller, pendientes) muestran el sobre si alguno de sus ítems está en ese estado
 const PESTANAS = [
-  ['todos', 'Todos'],
+  ['todos', 'Sobres'],
   ['taller', 'En taller'],
   ['pendientes', 'Pendientes'],
   ['listos', 'Listos para facturar'],
@@ -199,7 +199,7 @@ export default function Sobres({ params }) {
       ) : cargando ? <div className="vacio">Cargando…</div> : visibles.length === 0 ? <div className="vacio">No hay sobres acá.</div> : (
         <div className="lista">
           {visibles.map((t) => (
-            <Tarjeta key={t.id} t={t} ctx={ctx} enfocar={estadoItemTab} abrir={() => setDetalleId(t.id)}
+            <Tarjeta key={t.id} t={t} abrir={() => setDetalleId(t.id)}
               marcado={tab[0] === 'listos' ? marcados.includes(t.id) : null} marcar={(si) => marcar(t.id, si)} />
           ))}
         </div>
@@ -296,54 +296,48 @@ function ChipSobre({ t }) {
   return <span className={'chip est-' + t.estado}>{estadoTexto(t)}</span>
 }
 
-// ---------- Tarjeta de un sobre en Inicio ----------
-function Tarjeta({ t, ctx, enfocar, abrir, marcado, marcar }) {
-  const upd = async (campos) => {
-    const { error } = await sb.from('trabajos').update(campos).eq('id', t.id)
-    if (error) throw error
-  }
+// ---------- Tarjeta de un sobre: solo número, quién lo tiene y desde cuándo (color del cliente) ----------
+function Tarjeta({ t, abrir, marcado, marcar }) {
+  // Un renglón por tallerista que tiene ítems del sobre ahora
+  const enTaller = {}
+  t.items.filter((i) => i.estado === 'taller').forEach((i) => {
+    const k = i.tallerista_id || 0
+    const desde = (i.talleres || []).at(-1)?.fecha || t.ingresado_en.slice(0, 10)
+    if (!enTaller[k] || desde < enTaller[k].desde) enTaller[k] = { id: i.tallerista_id, nombre: i.tallerista || 'Sin tallerista', desde }
+  })
+  const lineas = Object.values(enTaller).sort((a, b) => a.desde.localeCompare(b.desde))
+  const pendientes = t.items.filter((i) => i.estado === 'pendiente').length
+  const otro = { listo_para_facturar: 'Listo para facturar', facturado: 'Facturado', entregado: 'Entregado', rechazado: 'Rechazado – para devolver' }[t.estado]
+
   return (
-    <div className={'card sobre est-' + t.estado + (marcado ? ' marcado' : '')} style={{ '--cliente': colorCliente(t.cliente_id) }}>
-      <div className="sobre-cab" onClick={abrir} role="button">
+    <div className={'card sobre tile' + (marcado ? ' marcado' : '')} style={{ '--cliente': colorCliente(t.cliente_id) }} onClick={abrir} role="button" title={t.cliente}>
+      <div className="tile-cab">
         {marcado !== null && marcado !== undefined && (
           <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
         )}
-        <div className="sobre-titulo">
-          <div className="nro">Sobre {t.nro_sobre}</div>
-          <div className="cliente"><span className="punto-cliente" />{t.cliente}</div>
-        </div>
-        <ChipSobre t={t} />
+        <div className="nro">Sobre {t.nro_sobre}</div>
       </div>
-      <div className="meta clic" onClick={abrir}>{TIPOS[t.tipo]} · Ingresó {fecha(t.ingresado_en)}{t.items.length > 1 ? ` · ${t.items.length} ítems` : ''}</div>
-
-      <div className="items-sobre">
-        {t.items.map((it) => (
-          <ItemFila key={it.id} it={it} total={t.items.length} t={t} ctx={ctx} apagado={enfocar && it.estado !== enfocar} />
+      <div className="tile-cuerpo">
+        {lineas.map((l) => (
+          <div key={l.id || 0} className="tile-linea">
+            <b>{l.nombre}</b><span>desde {dma(l.desde)}</span>
+          </div>
         ))}
+        {pendientes > 0 && <div className="tile-linea"><b>Presupuesto pendiente</b>{pendientes > 1 && <span>{pendientes} ítems</span>}</div>}
+        {!lineas.length && !pendientes && otro && <div className="tile-linea"><b>{otro}</b></div>}
       </div>
-
-      {t.estado === 'facturado' && (
-        <div className="meta">Facturado {fecha(t.facturado_en)} · {hechura(t.hechura, t.hechura_moneda)} · {METALES[t.metal] || ''} {t.peso_fino != null ? gramos(t.peso_fino) + ' fino' : ''}</div>
-      )}
-      {(t.estado === 'facturado' || t.estado === 'rechazado') && (
-        <div className="acciones">
-          <button className="btn primario" onClick={async () => (await ctx.preguntar(`¿Confirmás que entregaste el sobre ${t.nro_sobre}?`)) && ctx.accion(() => upd({ estado: 'entregado' }))}>Entregado</button>
-        </div>
-      )}
     </div>
   )
 }
 
-// ---------- Un ítem dentro de la tarjeta, con sus acciones ----------
-function ItemFila({ it, total, t, ctx, apagado }) {
+// ---------- Botones de cada ítem (dentro del sobre abierto) ----------
+function AccionesItem({ it, total, t, ctx }) {
   const opciones = ctx.talleristas.filter((x) => x.activo && x.id !== it.tallerista_id)
   const [cambiando, setCambiando] = useState(false)
   const [destino, setDestino] = useState('')
   const [otro, setOtro] = useState('')
   const elegido = destino || (opciones[0] ? String(opciones[0].id) : 'otro')
   const quien = total > 1 ? `el ítem ${it.numero} del sobre ${t.nro_sobre}` : `el sobre ${t.nro_sobre}`
-  const ultimo = (it.talleres || []).at(-1)
-
   async function cambiarTaller() {
     const nombre = elegido === 'otro' ? otro.trim() : opciones.find((x) => String(x.id) === elegido)?.nombre
     if (!nombre) return ctx.accion(async () => { throw new Error('Escribí el nombre del tallerista.') })
@@ -372,29 +366,14 @@ function ItemFila({ it, total, t, ctx, apagado }) {
   }
 
   return (
-    <div className={'item-fila item-' + it.estado + (apagado ? ' apagado' : '')}>
-      <div className="item-linea">
-        <div className="item-nombre">{nombreItem(it, total)}</div>
-        {it.estado === 'taller' && total > 1 && <ChipTall id={it.tallerista_id} nombre={it.tallerista} />}
-        {it.estado === 'pendiente' && total > 1 && <span className="chip est-esperando_confirmacion">Pendiente</span>}
-        {it.estado === 'listo' && total > 1 && t.estado !== 'facturado' && t.estado !== 'entregado' && <span className="chip est-listo_para_facturar">Listo</span>}
-        {it.estado === 'rechazado' && <span className="chip est-rechazado">Rechazado</span>}
-      </div>
-      {it.descripcion && <div className="item-desc" title={it.descripcion}>{it.descripcion}</div>}
-      {it.presupuesto_hechura != null && it.estado === 'pendiente' && (
-        <div className="meta">Presupuesto: {textoPresupuesto(it) || 'sin datos'}{it.tallerista ? ' · ' + it.tallerista : ''}</div>
-      )}
-      {it.estado === 'listo' && t.estado === 'listo_para_facturar' && (ultimo?.pago != null || ultimo?.pago_oro18 != null) && (
-        <div className="pagado">Pagado a {ultimo.talleristas?.nombre}: <b>{textoPago(ultimo)}</b></div>
-      )}
-
-      {!apagado && it.estado === 'pendiente' && (
+    <>
+      {it.estado === 'pendiente' && (
         <div className="acciones">
           <button className="btn ok" onClick={() => responder(true)}>Aceptado</button>
           <button className="btn peligro" onClick={() => responder(false)}>Rechazado</button>
         </div>
       )}
-      {!apagado && it.estado === 'taller' && (
+      {it.estado === 'taller' && (
         <div className="acciones-taller">
           {!cambiando ? (
             <button className="btn" onClick={() => setCambiando(true)}>{it.tallerista ? 'Cambiar de taller' : 'Asignar tallerista'}</button>
@@ -412,7 +391,7 @@ function ItemFila({ it, total, t, ctx, apagado }) {
           <button className="btn ok" onClick={listo}>Listo para facturar</button>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -654,6 +633,14 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
           <button className="btn suave" onClick={() => setNuevo({ nombre: '', descripcion: '', tallerista: '', pres: { hechura: '', moneda: 'ARS', metal: '', peso: '' } })}>+ Agregar ítem a este sobre</button>
         ))}
 
+        {(t.estado === 'facturado' || t.estado === 'rechazado') && (
+          <div className="acciones-detalle">
+            <button className="btn primario" onClick={async () => (await ctx.preguntar(`¿Confirmás que entregaste el sobre ${t.nro_sobre}?`)) && ctx.accion(async () => {
+              const { error } = await sb.from('trabajos').update({ estado: 'entregado' }).eq('id', t.id)
+              if (error) throw error
+            })}>Entregado</button>
+          </div>
+        )}
         {t.estado === 'listo_para_facturar' && (
           <div className="acciones-detalle">
             <button className="btn ok" onClick={() => ir('facturacion', { sobres: t.id })}>Enviar a facturación</button>
@@ -669,6 +656,9 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
           </tbody>
         </table>
         <button className="btn peligro eliminar-sobre" onClick={eliminar}>Eliminar sobre</button>
+        <div className="pie-detalle">
+          <button className="btn primario" onClick={cerrar}>Listo</button>
+        </div>
       </div>
     </div>
   )
@@ -748,6 +738,10 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
           ? <ChipTall id={it.tallerista_id} nombre={it.tallerista} />
           : <span className={'chip est-' + { pendiente: 'esperando_confirmacion', taller: 'taller', listo: 'listo_para_facturar', rechazado: 'rechazado' }[it.estado]}>{ESTADO_I[it.estado]}</span>}
       </div>
+      {['pendiente', 'taller'].includes(it.estado) && !['facturado', 'entregado'].includes(t.estado) && (
+        <div className="acciones-item-detalle"><AccionesItem it={it} total={total} t={t} ctx={ctx} /></div>
+      )}
+      {it.presupuesto_hechura != null || it.presupuesto_metal ? <div className="meta">Presupuesto: {textoPresupuesto(it)}{it.presupuesto_respuesta ? ` · ${it.presupuesto_respuesta === 'aceptado' ? 'aceptado' : 'rechazado'}` : ''}</div> : null}
       {url ? <img src={url} className="foto-grande clic" alt={'Ítem ' + it.numero} onClick={() => setAmpliada(true)} title="Tocá para agrandar" /> : <div className="sin-foto">Sin foto</div>}
       {ampliada && url && (
         <div className="foto-ampliada" onClick={() => setAmpliada(false)}>

@@ -399,3 +399,51 @@ label.falta { color: var(--rojo); }
 /* Fondo de cada sobre con el color de su cliente */
 .card.sobre { background: color-mix(in srgb, var(--cliente, #ffffff) 18%, #ffffff); }
 .card.sobre .item-fila { background: #ffffffd9; }
+
+/* ================= Fondo negro ================= */
+:root { --fondo: #0d0c0b; }
+body { background: var(--fondo); }
+main { color: #ece6dc; }
+main h1, main h2 { color: #f6f1e8; }
+main .card, main .tabla, .modal, .saldo, .totales, .barra-lote, .login-card { color: var(--tinta); }
+main > section > .ayuda, main > section > p.ayuda, main .vacio, main > section > .meta { color: #a8a094; }
+.pestanas { border-bottom-color: #ffffff26; }
+.pestanas a { color: #a8a094; }
+.pestanas a.activo { color: #fff; }
+.volver, main a.volver { color: #e0b84f; }
+.login { background: var(--fondo); }
+main .filtros label { color: #ece6dc; }
+.barra { border-bottom: 1px solid #ffffff1a; }
+.panel-txt { color: var(--suave); }
+main .hoja-cab, main .titulo-cliente h1 { color: #f6f1e8; }
+.detalle-tall .volver-tall { color: #ece6dc; border-color: #ffffff40; }
+main > section > .error { margin-top: 0; }
+
+/* ================= Tarjetas de sobres: color del cliente ================= */
+.lista { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .8rem; }
+.card.sobre.tile {
+  background: var(--cliente) !important; color: #fff; border: 0 !important; border-radius: 12px;
+  padding: .9rem 1rem; cursor: pointer; gap: .55rem; min-height: 120px; height: auto;
+  box-shadow: 0 1px 0 #ffffff14 inset;
+}
+.card.sobre.tile:hover { filter: brightness(1.08); }
+.tile .nro { font-size: 1.3rem; color: #fff; }
+.tile-cab { display: flex; align-items: center; gap: .6rem; }
+.tile-cuerpo { display: flex; flex-direction: column; gap: .35rem; }
+.tile-linea { display: flex; flex-direction: column; background: #00000026; border-radius: 8px; padding: .4rem .6rem; }
+.tile-linea b { font-weight: 600; }
+.tile-linea span { font-size: .85rem; opacity: .85; }
+.card.sobre.tile.marcado { outline: 3px solid #fff; outline-offset: 2px; }
+.tile .check-sobre { accent-color: #fff; }
+
+/* Detalle del sobre: botones de cada ítem y botón Listo abajo */
+.acciones-item-detalle { display: flex; flex-direction: column; gap: .5rem; padding: .7rem; background: #fff; border: 1px solid var(--linea); border-radius: 8px; }
+.acciones-item-detalle .acciones { border-top: 0; padding-top: 0; }
+.pie-detalle { position: sticky; bottom: -1rem; margin: .5rem -1.1rem -1rem; padding: .8rem 1.1rem; background: #fffffff2; border-top: 1px solid var(--linea); display: flex; justify-content: flex-end; }
+.pie-detalle .btn { min-width: 9rem; }
+.modal h2, .modal h3, main .card h2, main .card h1 { color: var(--tinta); }
+main section > .btn.primario, main section > .acciones-detalle .btn.primario { background: #e0b84f; border-color: #e0b84f; color: #1f1c18; }
+@media print {
+  main, main h1, main h2, main .hoja-cab, main .titulo-cliente h1 { color: #000 !important; }
+  body { background: #fff !important; }
+}
