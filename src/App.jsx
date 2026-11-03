@@ -86,6 +86,9 @@ export default function App() {
         <button className="salir" onClick={() => sb.auth.signOut()}>Salir</button>
       </nav>
       <main>
+        {pagina !== 'sobres' && (
+          <a href="#/sobres" className="cerrar-pagina no-print" aria-label="Cerrar y volver a Sobres" title="Cerrar">×</a>
+        )}
         {pagina === 'ingreso' && <Ingreso />}
         {pagina === 'sobres' && <Sobres params={params} />}
         {pagina === 'facturacion' && <Facturacion params={params} />}

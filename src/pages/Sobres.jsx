@@ -18,6 +18,7 @@ const PESTANAS = [
   ['clientes', 'Clientes'],
 ]
 const ESTADOS_SOBRE = {
+  todos: ['presupuesto', 'esperando_confirmacion', 'taller', 'listo_para_facturar', 'rechazado'],
   taller: ['taller', 'esperando_confirmacion'],
   pendientes: ['taller', 'esperando_confirmacion'],
   listos: ['listo_para_facturar'],
@@ -424,10 +425,16 @@ function Tarjeta({ t, abrir, marcado, marcar }) {
         {marcado !== null && marcado !== undefined && (
           <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
         )}
-        <div>
+        <div className="tile-titulo">
           <div className="nro">Sobre {t.nro_sobre}</div>
           <div className="tile-cliente">{t.cliente}</div>
         </div>
+      </div>
+      <div className="tile-estados">
+        {pendientes > 0 && <span className="estado-tile est-pend">Pendiente</span>}
+        {lineas.length > 0 && <span className="estado-tile est-tall">En taller</span>}
+        {t.estado === 'listo_para_facturar' && <span className="estado-tile est-listo">Listo para facturar</span>}
+        {(t.estado === 'facturado' || t.estado === 'entregado') && <span className="estado-tile est-fact">{t.estado === 'entregado' ? 'Entregado' : 'Facturado'}</span>}
       </div>
       <div className="tile-cuerpo">
         {lineas.map((l) => (
@@ -436,7 +443,8 @@ function Tarjeta({ t, abrir, marcado, marcar }) {
           </div>
         ))}
         {pendientes > 0 && <div className="tile-linea"><b>Presupuesto pendiente</b>{pendientes > 1 && <span>{pendientes} ítems</span>}</div>}
-        {!lineas.length && !pendientes && otro && <div className="tile-linea"><b>{otro}</b>{t.factura_id && <span>Factura N.º {t.factura_id} · {dma(t.facturado_en?.slice(0, 10))}</span>}</div>}
+        {t.factura_id && <div className="tile-linea"><b>Factura N.º {t.factura_id}</b><span>{dma(t.facturado_en?.slice(0, 10))}</span></div>}
+        {t.estado === 'rechazado' && <div className="tile-linea"><b>{otro}</b></div>}
       </div>
     </div>
   )

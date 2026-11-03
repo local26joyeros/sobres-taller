@@ -491,3 +491,22 @@ main .saldo-cliente h3 { color: #f6f1e8; }
 .fotos-sobre-detalle { display: flex; flex-direction: column; gap: .4rem; }
 .abrir-mov { margin: 1rem 0; }
 main .filtros .btn.primario, main .abrir-mov.btn.primario { background: #e0b84f; border-color: #e0b84f; color: #1f1c18; }
+
+/* ✕ para cerrar las pantallas del menú y volver a Sobres */
+main { position: relative; }
+.cerrar-pagina {
+  position: absolute; top: 1rem; right: 1.2rem; z-index: 5;
+  width: 2.6rem; height: 2.6rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: #ffffff1a; color: #fff; font-size: 1.8rem; line-height: 1; text-decoration: none;
+}
+.cerrar-pagina:hover { background: #ffffff33; }
+@media (max-width: 760px) { .cerrar-pagina { top: .6rem; right: .7rem; } }
+
+/* Estado de cada sobre con su color (además del color del cliente) */
+.tile-estados { display: flex; flex-wrap: wrap; gap: .3rem; }
+.estado-tile { font-size: .78rem; font-weight: 700; padding: .2rem .6rem; border-radius: 999px; border: 2px solid #ffffffd9; letter-spacing: .01em; }
+.estado-tile.est-pend { background: #f2c230; color: #2a2205; }
+.estado-tile.est-tall { background: #ef7d22; color: #fff; }
+.estado-tile.est-listo { background: #2fb35a; color: #fff; }
+.estado-tile.est-fact { background: #e9e6e1; color: #3d3a36; }
+.tile-titulo { min-width: 0; }
