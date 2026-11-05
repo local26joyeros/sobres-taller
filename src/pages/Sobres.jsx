@@ -18,7 +18,7 @@ const PESTANAS = [
   ['clientes', 'Clientes'],
 ]
 const ESTADOS_SOBRE = {
-  todos: ['presupuesto', 'esperando_confirmacion', 'taller', 'listo_para_facturar', 'rechazado'],
+  todos: ['presupuesto', 'esperando_confirmacion', 'taller', 'rechazado'],
   taller: ['taller', 'esperando_confirmacion'],
   pendientes: ['taller', 'esperando_confirmacion'],
   listos: ['listo_para_facturar'],
@@ -473,7 +473,7 @@ function AccionesItem({ it, total, t, ctx }) {
   async function listo() {
     const p = await ctx.preguntarPago(`${total > 1 ? `Ítem ${it.numero} del sobre ${t.nro_sobre}` : `Sobre ${t.nro_sobre}`} listo. ¿Cuánto le pagaste${it.tallerista ? ' a ' + it.tallerista : ''} por este trabajo?`)
     if (!p) return
-    ctx.accion(() => rpc('marcar_item_listo', { p_item: it.id, p_pago: p.monto, p_moneda: p.moneda, p_oro18: p.oro }))
+    ctx.accion(() => rpc('marcar_item_listo', { p_item: it.id, p_pago: p.monto, p_moneda: p.moneda, p_oro18: p.oro }), { quedarSi: (l) => l.some((i) => i.estado === 'taller') })
   }
 
   const responder = async (aceptado) => {
@@ -482,7 +482,7 @@ function AccionesItem({ it, total, t, ctx }) {
       ? `¿El cliente aceptó el presupuesto de ${quien}${pres ? ` (${pres})` : ''}? Pasa al taller${it.tallerista ? ' de ' + it.tallerista : ''}.`
       : `¿El cliente rechazó el presupuesto de ${quien}?`
     if (!(await ctx.preguntar(texto))) return
-    ctx.accion(() => rpc('responder_item', { p_item: it.id, p_aceptado: aceptado }))
+    ctx.accion(() => rpc('responder_item', { p_item: it.id, p_aceptado: aceptado }), { quedarSi: (l) => l.some((i) => i.estado === 'pendiente') })
   }
 
   return (
@@ -508,7 +508,7 @@ function AccionesItem({ it, total, t, ctx }) {
               <button className="btn suave" onClick={() => { setCambiando(false); setDestino(''); setOtro('') }}>Cancelar</button>
             </div>
           )}
-          <button className="btn ok" onClick={listo}>Listo para facturar</button>
+          <button className="btn ok" onClick={listo}>{total > 1 ? `Listo para facturar: ${nombreItem(it, total)}` : 'Listo para facturar'}</button>
         </div>
       )}
     </>
@@ -633,13 +633,21 @@ function DetalleCargado({ id, t, ctx, recargar, version, cerrar }) {
     const rec = {}
     ;(tr || []).forEach((x) => { (rec[x.item_id] ||= []).push(x) })
     setSobre(s)
-    setItems((its || []).map((it) => ({ ...it, tallerista: it.talleristas?.nombre, talleres: rec[it.id] || [] })))
+    const lista = (its || []).map((it) => ({ ...it, tallerista: it.talleristas?.nombre, talleres: rec[it.id] || [] }))
+    setItems(lista)
+    return lista
   }, [id])
   useEffect(() => { cargar() }, [cargar, version])
   if (!sobre || !items) return null
   const refrescar = async () => { await cargar(); recargar() }
   // Después de cada cambio (aceptar, pasar de taller, listo, etc.) se cierra el sobre y se vuelve al panel
-  return <Detalle t={sobre} items={items} ctx={{ ...ctx, accion: async (fn) => { const ok = await ctx.accion(fn); if (ok) cerrar(); else await cargar(); return ok } }} recargar={refrescar} cerrar={cerrar} />
+  return <Detalle t={sobre} items={items} ctx={{ ...ctx, accion: async (fn, { quedarSi } = {}) => {
+    const ok = await ctx.accion(fn)
+    const lista = await cargar()
+    // Si al sobre le quedan ítems por terminar (en taller o pendientes), queda abierto para seguir con los otros
+    if (ok && !(quedarSi && quedarSi(lista))) cerrar()
+    return ok
+  } }} recargar={refrescar} cerrar={cerrar} />
 }
 
 function Detalle({ t, items, ctx, recargar, cerrar }) {
@@ -729,6 +737,16 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
           </div>
         )}
 
+        {items.filter((i) => i.estado === 'pendiente').length > 1 && (
+          <div className="acciones-detalle aceptar-todos">
+            <div><b>{items.filter((i) => i.estado === 'pendiente').length} presupuestos pendientes</b><div className="meta">Podés aceptarlos todos juntos o uno por uno abajo.</div></div>
+            <button className="btn ok" onClick={async () => {
+              const pend = items.filter((i) => i.estado === 'pendiente')
+              if (!(await ctx.preguntar(`¿El cliente aceptó los presupuestos de los ${pend.length} ítems del sobre ${t.nro_sobre}? Pasan todos al taller.`))) return
+              ctx.accion(async () => { for (const i of pend) await rpc('responder_item', { p_item: i.id, p_aceptado: true }) })
+            }}>Aceptar todos</button>
+          </div>
+        )}
         <div className="fotos-sobre-detalle">
           <h4 className="sub">Fotos del sobre</h4>
           <Galeria ctx={ctx} sinCambiar
