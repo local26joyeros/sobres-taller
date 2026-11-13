@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { sb, METALES, cargarListas, errorMsg, fecha, fechaCorta, gramos, hechura, plata } from '../lib'
 
 const COLS = [['hechuras', 'Hechuras ($)', 'p'], ['dolares', 'Dólares', 'p'], ['oro_fino', 'Oro fino', 'g'], ['granalla', 'Granalla', 'g'], ['platino', 'Platino', 'g'], ['plata_fina', 'Plata fina', 'g']]
@@ -41,7 +41,7 @@ export default function Facturados({ params }) {
       if (error) setError(errorMsg(error))
       // Ordenado por factura y por número de sobre (de menor a mayor); devoluciones al final de cada sobre
       const data = (crudo || []).map((l) => ({ ...l, nro_sobre: l.trabajos?.nro_sobre, cliente_id: l.trabajos?.cliente_id, cliente: l.trabajos?.clientes?.nombre }))
-        .sort((a, b) => a.factura_id - b.factura_id || String(a.nro_sobre).localeCompare(String(b.nro_sobre), 'es', { numeric: true }) || a.devolucion - b.devolucion || a.id - b.id)
+        .sort((a, b) => String(a.cliente).localeCompare(String(b.cliente)) || a.factura_id - b.factura_id || String(a.nro_sobre).localeCompare(String(b.nro_sobre), 'es', { numeric: true }) || a.devolucion - b.devolucion || a.id - b.id)
       setFilas(data)
       // Saldos de cada cliente: lo facturado acá, el saldo anterior y el actualizado
       const ids = [...new Set(data.map((r) => r.trabajo_id))]
@@ -68,7 +68,24 @@ export default function Facturados({ params }) {
   const nSobres = new Set(filas.map((r) => r.trabajo_id)).size
   const sum = (f) => cobradas.reduce((s, r) => s + (Number(f(r)) || 0), 0)
   const fac = facturas.find((f) => String(f.id) === String(factura))
-  const nombreCliente = clientes.find((c) => String(c.id) === String(cliente))?.nombre
+  const nombresEnFilas = [...new Set(filas.map((r) => r.cliente))]
+  const nombreCliente = clientes.find((c) => String(c.id) === String(cliente))?.nombre || (nombresEnFilas.length === 1 ? nombresEnFilas[0] : '')
+  const variosClientes = !nombreCliente && nombresEnFilas.length > 1
+  const Cab = ({ titulo, detalle, nombre }) => (
+    <div className="hoja-cab factura-cab">
+      <div className="fc-cliente">
+        <span className="meta">Cliente</span>
+        <b>{nombre || (variosClientes ? 'Varios clientes' : '—')}</b>
+      </div>
+      <div className="fc-datos">
+        <div className="marca">Trabajos <span>Local 26</span></div>
+        <b>{titulo}</b>
+        <div className="meta">{detalle}</div>
+      </div>
+    </div>
+  )
+  const detalleFactura = (fac ? `Factura N.º ${fac.id} — ${fecha(fac.facturado_en)}` : `Del ${fechaCorta(desde + 'T12:00')} al ${fechaCorta(hasta + 'T12:00')}`) +
+    (moneda ? ` · Hechura en ${moneda === 'ARS' ? 'pesos' : 'dólares'}` : '')
 
   return (
     <section>
@@ -101,17 +118,7 @@ export default function Facturados({ params }) {
       </div>
 
       <div className="hoja">
-        <div className="hoja-cab">
-          <div className="marca">Trabajos <span>Local 26</span></div>
-          <div>
-            <b>Trabajos facturados</b>
-            <div className="meta">
-              {fac ? `Factura N.º ${fac.id} — ${fecha(fac.facturado_en)}` : `Del ${fechaCorta(desde + 'T12:00')} al ${fechaCorta(hasta + 'T12:00')}`}
-              {nombreCliente ? ` · ${nombreCliente}` : ''}
-              {moneda ? ` · Hechura en ${moneda === 'ARS' ? 'pesos' : 'dólares'}` : ''}
-            </div>
-          </div>
-        </div>
+        <Cab titulo={fac ? 'Factura' : 'Trabajos facturados'} detalle={detalleFactura} nombre={nombreCliente} />
         {error && <div className="error">{error}</div>}
         {cargando ? <div className="vacio">Cargando…</div> : filas.length === 0 ? <div className="vacio">No hay trabajos facturados con estos filtros.</div> : (
           <div className="tabla-scroll">
@@ -119,7 +126,6 @@ export default function Facturados({ params }) {
               <thead>
                 <tr>
                   <th>N.º sobre</th>
-                  {!cliente && <th>Cliente</th>}
                   <th>Ítem</th>
                   <th className="d">Peso oro 18k</th>
                   <th className="d">Oro fino</th>
@@ -130,10 +136,11 @@ export default function Facturados({ params }) {
               <tbody>
                 {filas.map((r, i) => {
                   const mismoSobre = i > 0 && filas[i - 1].trabajo_id === r.trabajo_id && filas[i - 1].factura_id === r.factura_id
-                  return (
-                    <tr key={r.id} className={(r.devolucion ? 'fila-devolucion' : '') + (mismoSobre ? ' sigue-sobre' : '')}>
+                  const nuevoCliente = variosClientes && (i === 0 || filas[i - 1].cliente_id !== r.cliente_id)
+                  return (<Fragment key={r.id}>
+                    {nuevoCliente && <tr className="fila-cliente"><td colSpan={6}>{r.cliente}</td></tr>}
+                    <tr className={(r.devolucion ? 'fila-devolucion' : '') + (mismoSobre ? ' sigue-sobre' : '')}>
                       <td><b>{mismoSobre ? '' : r.nro_sobre}</b></td>
-                      {!cliente && <td>{mismoSobre ? '' : r.cliente}</td>}
                       <td>{r.descripcion || '—'}</td>
                       {r.devolucion ? <td colSpan={4} className="d devolucion">Devolución</td> : <>
                         <td className="d">{r.metal === 'oro' ? gramos(r.peso) : '—'}</td>
@@ -142,12 +149,12 @@ export default function Facturados({ params }) {
                         <td className="d">{hechura(r.hechura, r.moneda)}</td>
                       </>}
                     </tr>
-                  )
+                  </Fragment>)
                 })}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={cliente ? 2 : 3}>Totales ({nSobres} sobre{nSobres === 1 ? '' : 's'})</td>
+                  <td colSpan={2}>Totales ({nSobres} sobre{nSobres === 1 ? '' : 's'})</td>
                   <td className="d">{gramos(sum((r) => (r.metal === 'oro' ? r.peso : 0)))}</td>
                   <td className="d">{gramos(sum((r) => (r.metal === 'oro' ? r.peso_fino : 0)))}</td>
                   <td className="d">
@@ -168,8 +175,8 @@ export default function Facturados({ params }) {
           const cols = COLS.filter(([k]) => c.anterior[k] || c.facturado[k] || c.actualizado[k])
           if (!cols.length) return null
           return (
-            <div key={c.cid} className="saldo-cliente">
-              <h3>Cuenta de {c.nombre}</h3>
+            <div key={c.cid} className="saldo-cliente hoja-aparte">
+              <Cab titulo="Saldo a la fecha" detalle={fecha(new Date().toISOString())} nombre={c.nombre} />
               <table className="tabla impresion fact">
                 <thead><tr><th></th>{cols.map(([k, t]) => <th key={k} className="d">{t}</th>)}</tr></thead>
                 <tbody>

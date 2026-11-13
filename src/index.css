@@ -556,3 +556,18 @@ main { position: relative; }
 .tabla.fact .fila-devolucion td { background: var(--rojo-claro); }
 .tabla.fact .devolucion { color: var(--rojo); font-weight: 700; text-align: center; }
 @media print { .tabla.fact .fila-devolucion td { background: none; } }
+
+/* Factura: cliente arriba a la izquierda; saldo en hoja aparte */
+.hoja-cab.factura-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 2px solid currentColor; padding-bottom: 8px; margin-bottom: 12px; }
+.factura-cab .fc-cliente { display: flex; flex-direction: column; }
+.factura-cab .fc-cliente b { font-size: 22px; }
+.factura-cab .fc-cliente .meta { text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+.factura-cab .fc-datos { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+main .factura-cab .meta { color: #a8a094; }
+.tabla.fact .fila-cliente td { font-weight: 700; background: #00000010; }
+.saldo-cliente.hoja-aparte { margin-top: 2.2rem; }
+@media print {
+  .saldo-cliente.hoja-aparte { break-before: page; page-break-before: always; margin-top: 0; padding-top: 8mm; }
+  main .factura-cab .meta { color: #333 !important; }
+}
+.tabla.fact td.d { white-space: nowrap; }
