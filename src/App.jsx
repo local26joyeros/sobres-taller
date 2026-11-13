@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
 import { sb, errorMsg } from './lib'
 import Ingreso from './pages/Ingreso'
 import Sobres from './pages/Sobres'
@@ -36,31 +37,37 @@ function Sistemas() {
   )
 }
 
-function Login() {
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [err, setErr] = useState('')
-  const [cargando, setCargando] = useState(false)
-  async function entrar(e) {
-    e.preventDefault()
-    setCargando(true)
-    setErr('')
-    const { error } = await sb.auth.signInWithPassword({ email, password: pass })
-    if (error) setErr(errorMsg(error))
-    setCargando(false)
-  }
+// Login único: la sesión es la de Taller - Movimientos (local26.vercel.app). Sobres la usa para entrar solo.
+const hub = createBrowserClient('https://rcrbdlrrswkvljkzprpp.supabase.co', 'sb_publishable_vmM9ijMMy7hmNMOW6m5oXA_wYokmmlL')
+
+async function entrarConMovimientos() {
+  const { data } = await hub.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) { window.location.href = '/login?volver=/sobres/'; return 'sin-sesion' }
+  const { data: r, error } = await sb.functions.invoke('entrar-con-movimientos', { body: { token } })
+  if (error || !r?.token_hash) throw new Error(r?.error || error?.message || 'No pude entrar')
+  const v = await sb.auth.verifyOtp({ token_hash: r.token_hash, type: 'magiclink' })
+  if (v.error) throw v.error
+  return 'ok'
+}
+
+async function salir() {
+  await Promise.allSettled([sb.auth.signOut(), hub.auth.signOut()])
+  window.location.href = '/login'
+}
+
+function Entrando({ error, reintentar }) {
   return (
     <>
-    <Sistemas />
-    <div className="login">
-      <form onSubmit={entrar} className="card login-card">
-        <div className="marca grande">Trabajos <span>Local 26</span></div>
-        <label>Correo<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
-        <label>Contraseña<input type="password" value={pass} onChange={(e) => setPass(e.target.value)} required /></label>
-        {err && <div className="error">{err}</div>}
-        <button className="btn primario" disabled={cargando}>{cargando ? 'Entrando…' : 'Entrar'}</button>
-      </form>
-    </div>
+      <Sistemas />
+      <div className="login">
+        <div className="card login-card">
+          <div className="marca grande">Trabajos <span>Local 26</span></div>
+          {error
+            ? <><div className="error">{error}</div><button className="btn primario" onClick={reintentar}>Reintentar</button></>
+            : <p className="meta">Entrando…</p>}
+        </div>
+      </div>
     </>
   )
 }
@@ -70,16 +77,31 @@ export default function App() {
   const [ruta, setRuta] = useState(leerHash())
   const [menu, setMenu] = useState(false)
 
+  const [errorSso, setErrorSso] = useState('')
+
+  async function conectar() {
+    setErrorSso('')
+    try {
+      // Siempre se sigue a la sesión de Movimientos: si allá es otra persona o no hay sesión, se rehace
+      const [{ data: h }, { data: s }] = await Promise.all([hub.auth.getSession(), sb.auth.getSession()])
+      if (!h.session) { await sb.auth.signOut(); window.location.href = '/login?volver=/sobres/'; return }
+      if (s.session && s.session.user.email?.toLowerCase() === h.session.user.email?.toLowerCase()) { setSesion(s.session); return }
+      if (s.session) await sb.auth.signOut()
+      await entrarConMovimientos()
+    } catch (e) { setErrorSso(errorMsg(e)) }
+  }
+
   useEffect(() => {
-    sb.auth.getSession().then(({ data }) => setSesion(data.session))
+    // Abierto en su dirección propia: se pasa a la dirección común, donde está el login único
+    if (HUB) { window.location.replace(HUB + '/sobres/' + window.location.hash); return }
+    conectar()
     const { data } = sb.auth.onAuthStateChange((_e, s) => setSesion(s))
     const onHash = () => { setRuta(leerHash()); setMenu(false); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
     return () => { data.subscription.unsubscribe(); window.removeEventListener('hashchange', onHash) }
   }, [])
 
-  if (sesion === undefined) return <div className="cargando">Cargando…</div>
-  if (!sesion) return <Login />
+  if (!sesion) return <Entrando error={errorSso} reintentar={conectar} />
 
   const { pagina, params } = ruta
   return (
@@ -99,7 +121,7 @@ export default function App() {
         {PAGINAS.map(([k, t]) => (
           <a key={k} href={'#/' + k + (k === 'sobres' ? '?tab=todos' : '')} className={pagina === k && k !== 'sobres' ? 'activo' : ''} onClick={() => setMenu(false)}>{t}</a>
         ))}
-        <button className="salir" onClick={() => sb.auth.signOut()}>Salir</button>
+        <button className="salir" onClick={salir}>Salir</button>
       </nav>
       <main>
         {pagina !== 'sobres' && (
