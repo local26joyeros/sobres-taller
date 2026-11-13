@@ -24,6 +24,18 @@ function leerHash() {
   return { pagina: PAGINAS.some(([k]) => k === p) ? p : 'sobres', params: new URLSearchParams(q || '') }
 }
 
+// Barra común a los tres sistemas. Si Sobres se abre en su propia dirección, los enlaces van a la dirección común.
+const HUB = /^sobres-taller/.test(window.location.hostname) ? 'https://joyeria-dw-zip.vercel.app' : ''
+function Sistemas() {
+  return (
+    <nav className="sistemas no-print" aria-label="Sistemas">
+      <a href={HUB + '/'}>Movimientos</a>
+      <a href={HUB + '/sobres/'} className="activo">Sobres</a>
+      <a href={HUB + '/pagos/'}>Vencimientos y pagos</a>
+    </nav>
+  )
+}
+
 function Login() {
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
@@ -38,6 +50,8 @@ function Login() {
     setCargando(false)
   }
   return (
+    <>
+    <Sistemas />
     <div className="login">
       <form onSubmit={entrar} className="card login-card">
         <div className="marca grande">Trabajos <span>Local 26</span></div>
@@ -47,6 +61,7 @@ function Login() {
         <button className="btn primario" disabled={cargando}>{cargando ? 'Entrando…' : 'Entrar'}</button>
       </form>
     </div>
+    </>
   )
 }
 
@@ -69,6 +84,7 @@ export default function App() {
   const { pagina, params } = ruta
   return (
     <div className="app">
+      <Sistemas />
       <header className="barra no-print">
         <button className="hamburguesa" onClick={() => setMenu(true)} aria-label="Abrir menú">☰</button>
         <div className="marca">Trabajos <span>Local 26</span></div>

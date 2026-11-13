@@ -1,0 +1,8 @@
+{
+  "redirects": [{ "source": "/", "destination": "/sobres/", "permanent": false }],
+  "rewrites": [
+    { "source": "/sobres", "destination": "/index.html" },
+    { "source": "/sobres/", "destination": "/index.html" },
+    { "source": "/sobres/:path*", "destination": "/:path*" }
+  ]
+}

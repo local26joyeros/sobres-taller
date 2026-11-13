@@ -571,3 +571,9 @@ main .factura-cab .meta { color: #a8a094; }
   main .factura-cab .meta { color: #333 !important; }
 }
 .tabla.fact td.d { white-space: nowrap; }
+
+/* Barra común a los tres sistemas */
+.sistemas { display: flex; gap: 4px; padding: 6px 10px; background: #000; overflow-x: auto; scrollbar-width: none; }
+.sistemas a { flex: none; color: #bdb6aa; font: 600 13px/1 system-ui, -apple-system, sans-serif; padding: 8px 12px; border-radius: 99px; white-space: nowrap; text-decoration: none; }
+.sistemas a.activo { background: #d4b072; color: #111; }
+.sistemas a:not(.activo):hover { color: #fff; background: #ffffff1a; }
