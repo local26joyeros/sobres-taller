@@ -25,7 +25,7 @@ function leerHash() {
 }
 
 // Barra común a los tres sistemas. Si Sobres se abre en su propia dirección, los enlaces van a la dirección común.
-const HUB = /^sobres-taller/.test(window.location.hostname) ? 'https://joyeria-dw-zip.vercel.app' : ''
+const HUB = /^sobres-taller/.test(window.location.hostname) ? 'https://local26.vercel.app' : ''
 function Sistemas() {
   return (
     <nav className="sistemas no-print" aria-label="Sistemas">
