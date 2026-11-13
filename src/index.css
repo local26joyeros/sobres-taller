@@ -510,3 +510,49 @@ main { position: relative; }
 .estado-tile.est-listo { background: #2fb35a; color: #fff; }
 .estado-tile.est-fact { background: #e9e6e1; color: #3d3a36; }
 .tile-titulo { min-width: 0; }
+
+/* ---- Facturación por cliente e ítem ---- */
+.cliente-facturando {
+  display: flex; align-items: center; gap: 12px; margin: -6px 0 16px;
+  padding: 12px 14px; border-radius: var(--radio);
+  background: color-mix(in srgb, var(--cliente) 22%, #1a1816); border-left: 6px solid var(--cliente);
+}
+.cliente-facturando > div { flex: 1; display: flex; flex-direction: column; }
+.cliente-facturando .meta { color: #c9c0b2; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.cliente-facturando b { font-size: 22px; color: #fff; }
+.cliente-facturando .punto-cliente { width: 16px; height: 16px; }
+.elegir-cliente .lista-clientes-fact { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.chip-cliente { display: inline-flex; align-items: center; gap: 8px; background: color-mix(in srgb, var(--cliente) 25%, #fff); border: 1px solid var(--cliente); color: var(--tinta); }
+.chip-cliente .contador { background: #0000001a; border-radius: 99px; padding: 0 8px; font-size: 12px; }
+.otro-cliente { display: flex; flex-direction: column; gap: 4px; max-width: 320px; font-size: 13px; color: var(--suave); }
+.sobre-fact { margin-bottom: 14px; }
+.sobre-fact.apagada { opacity: .5; }
+.sobre-fact.nuevo { border: 2px dashed var(--oro); }
+.sobre-fact-cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.check-sobre-fact { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; }
+.check-sobre-fact input { width: 20px; height: 20px; }
+.nro-nuevo { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.nro-nuevo input { width: 120px; }
+.modo-fact { display: inline-flex; border: 1px solid var(--linea); border-radius: 8px; overflow: hidden; }
+.modo-fact button { border: 0; background: #fff; padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--suave); }
+.modo-fact button.sel { background: var(--tinta); color: #fff; }
+.tabla.factura td { vertical-align: middle; }
+.tabla.factura input.num { width: 100px; text-align: right; }
+.tabla.factura select { min-width: 110px; }
+.tabla.factura .fino { white-space: nowrap; color: var(--suave); }
+.tabla.factura .con-moneda { display: flex; gap: 6px; align-items: center; }
+.fila-devolucion td { background: var(--rojo-claro); }
+.fila-devolucion .devolucion { color: var(--rojo); font-weight: 700; text-align: center; }
+@media (max-width: 640px) {
+  .tabla.factura td:first-child::before { display: none; }
+  .tabla.factura td:first-child { display: block; }
+  .tabla.factura .con-moneda { flex: 1; justify-content: flex-end; }
+  .tabla.factura input.num { width: 110px; }
+  .tabla.factura td.devolucion { justify-content: center; }
+  .sobre-fact .tabla-scroll { overflow: visible; }
+}
+.check-sobre-fact, .nro-nuevo { flex-direction: row; }
+.tabla.fact tr.sigue-sobre td { border-top-color: transparent; }
+.tabla.fact .fila-devolucion td { background: var(--rojo-claro); }
+.tabla.fact .devolucion { color: var(--rojo); font-weight: 700; text-align: center; }
+@media print { .tabla.fact .fila-devolucion td { background: none; } }

@@ -30,24 +30,28 @@ export default function Facturados({ params }) {
   useEffect(() => {
     (async () => {
       setCargando(true)
-      let q = sb.from('vista_trabajos').select('*').not('factura_id', 'is', null).order('facturado_en').order('nro_sobre')
+      let q = sb.from('factura_lineas')
+        .select('*, facturas!inner(facturado_en), trabajos!inner(nro_sobre, cliente_id, clientes(nombre))')
+        .order('factura_id').order('id')
       if (factura) q = q.eq('factura_id', Number(factura))
-      else {
-        q = q.gte('facturado_en', desde + 'T00:00:00-03:00').lte('facturado_en', hasta + 'T23:59:59-03:00')
-      }
-      if (cliente) q = q.eq('cliente_id', Number(cliente))
-      if (moneda) q = q.eq('hechura_moneda', moneda)
-      const { data, error } = await q
+      else q = q.gte('facturas.facturado_en', desde + 'T00:00:00-03:00').lte('facturas.facturado_en', hasta + 'T23:59:59-03:00')
+      if (cliente) q = q.eq('trabajos.cliente_id', Number(cliente))
+      if (moneda) q = q.or(`moneda.eq.${moneda},devolucion.eq.true`)
+      const { data: crudo, error } = await q
       if (error) setError(errorMsg(error))
-      setFilas(data || [])
+      // Ordenado por factura y por número de sobre (de menor a mayor); devoluciones al final de cada sobre
+      const data = (crudo || []).map((l) => ({ ...l, nro_sobre: l.trabajos?.nro_sobre, cliente_id: l.trabajos?.cliente_id, cliente: l.trabajos?.clientes?.nombre }))
+        .sort((a, b) => a.factura_id - b.factura_id || String(a.nro_sobre).localeCompare(String(b.nro_sobre), 'es', { numeric: true }) || a.devolucion - b.devolucion || a.id - b.id)
+      setFilas(data)
       // Saldos de cada cliente: lo facturado acá, el saldo anterior y el actualizado
-      const ids = (data || []).map((r) => r.id)
+      const ids = [...new Set(data.map((r) => r.trabajo_id))]
       const clis = [...new Set((data || []).map((r) => r.cliente_id))]
       if (ids.length) {
         const { data: movs } = await sb.from('movimientos_cuenta').select('*').in('cliente_id', clis).order('id')
         const res = clis.map((cid) => {
           const delCliente = (movs || []).filter((m) => m.cliente_id === cid)
-          const fact = delCliente.filter((m) => m.tipo === 'facturacion' && ids.includes(m.trabajo_id))
+          const facIds = [...new Set(data.map((r) => r.factura_id))]
+          const fact = delCliente.filter((m) => m.tipo === 'facturacion' && ids.includes(m.trabajo_id) && (m.factura_id == null || facIds.includes(m.factura_id)))
           const primero = fact.length ? Math.min(...fact.map((m) => m.id)) : Infinity
           const suma = (lista) => Object.fromEntries(COLS.map(([k]) => [k, lista.reduce((s, m) => s + Number(m[k] || 0), 0)]))
           const facturado = suma(fact), anterior = suma(delCliente.filter((m) => m.id < primero && !fact.includes(m)))
@@ -60,7 +64,9 @@ export default function Facturados({ params }) {
     })()
   }, [factura, desde, hasta, cliente, moneda])
 
-  const sum = (f) => filas.reduce((s, r) => s + (Number(f(r)) || 0), 0)
+  const cobradas = filas.filter((r) => !r.devolucion)
+  const nSobres = new Set(filas.map((r) => r.trabajo_id)).size
+  const sum = (f) => cobradas.reduce((s, r) => s + (Number(f(r)) || 0), 0)
   const fac = facturas.find((f) => String(f.id) === String(factura))
   const nombreCliente = clientes.find((c) => String(c.id) === String(cliente))?.nombre
 
@@ -114,6 +120,7 @@ export default function Facturados({ params }) {
                 <tr>
                   <th>N.º sobre</th>
                   {!cliente && <th>Cliente</th>}
+                  <th>Ítem</th>
                   <th className="d">Peso oro 18k</th>
                   <th className="d">Oro fino</th>
                   <th className="d">Plata / platino fino</th>
@@ -121,20 +128,26 @@ export default function Facturados({ params }) {
                 </tr>
               </thead>
               <tbody>
-                {filas.map((r) => (
-                  <tr key={r.id}>
-                    <td><b>{r.nro_sobre}</b></td>
-                    {!cliente && <td>{r.cliente}</td>}
-                    <td className="d">{r.metal === 'oro' ? gramos(r.peso) : '—'}</td>
-                    <td className="d">{r.metal === 'oro' ? gramos(r.peso_fino) : '—'}</td>
-                    <td className="d">{r.metal !== 'oro' && r.peso_fino != null ? `${gramos(r.peso_fino)} ${METALES[r.metal].toLowerCase()}` : '—'}</td>
-                    <td className="d">{hechura(r.hechura, r.hechura_moneda)}</td>
-                  </tr>
-                ))}
+                {filas.map((r, i) => {
+                  const mismoSobre = i > 0 && filas[i - 1].trabajo_id === r.trabajo_id && filas[i - 1].factura_id === r.factura_id
+                  return (
+                    <tr key={r.id} className={(r.devolucion ? 'fila-devolucion' : '') + (mismoSobre ? ' sigue-sobre' : '')}>
+                      <td><b>{mismoSobre ? '' : r.nro_sobre}</b></td>
+                      {!cliente && <td>{mismoSobre ? '' : r.cliente}</td>}
+                      <td>{r.descripcion || '—'}</td>
+                      {r.devolucion ? <td colSpan={4} className="d devolucion">Devolución</td> : <>
+                        <td className="d">{r.metal === 'oro' ? gramos(r.peso) : '—'}</td>
+                        <td className="d">{r.metal === 'oro' ? gramos(r.peso_fino) : '—'}</td>
+                        <td className="d">{r.metal && r.metal !== 'oro' && r.peso_fino != null ? `${gramos(r.peso_fino)} ${METALES[r.metal].toLowerCase()}` : '—'}</td>
+                        <td className="d">{hechura(r.hechura, r.moneda)}</td>
+                      </>}
+                    </tr>
+                  )
+                })}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={cliente ? 1 : 2}>Totales ({filas.length} sobres)</td>
+                  <td colSpan={cliente ? 2 : 3}>Totales ({nSobres} sobre{nSobres === 1 ? '' : 's'})</td>
                   <td className="d">{gramos(sum((r) => (r.metal === 'oro' ? r.peso : 0)))}</td>
                   <td className="d">{gramos(sum((r) => (r.metal === 'oro' ? r.peso_fino : 0)))}</td>
                   <td className="d">
@@ -142,8 +155,8 @@ export default function Facturados({ params }) {
                     {sum((r) => (r.metal === 'platino' ? r.peso_fino : 0)) > 0 && <div>{gramos(sum((r) => (r.metal === 'platino' ? r.peso_fino : 0)))} platino</div>}
                   </td>
                   <td className="d">
-                    {moneda !== 'USD' && <div>$ {plata(sum((r) => (r.hechura_moneda === 'ARS' ? r.hechura : 0)))}</div>}
-                    {moneda !== 'ARS' && <div>US$ {plata(sum((r) => (r.hechura_moneda === 'USD' ? r.hechura : 0)))}</div>}
+                    {moneda !== 'USD' && <div>$ {plata(sum((r) => (r.moneda === 'ARS' ? r.hechura : 0)))}</div>}
+                    {moneda !== 'ARS' && <div>US$ {plata(sum((r) => (r.moneda === 'USD' ? r.hechura : 0)))}</div>}
                   </td>
                 </tr>
               </tfoot>

@@ -130,20 +130,8 @@ export default function Sobres({ params }) {
     (!estadoItemTab || t.items.some((i) => i.estado === estadoItemTab)) &&
     (!b || t.nro_sobre.toLowerCase().includes(b) || t.cliente.toLowerCase().includes(b) || t.items.some((i) => (i.descripcion || '').toLowerCase().includes(b))) &&
     (!filtroTall || t.items.some((i) => String(i.tallerista_id) === filtroTall && (tab[0] !== 'taller' || i.estado === 'taller'))))
-  if (tab[0] === 'todos' || tab[0] === 'taller') {
-    // Desde cuándo está en lo de un tallerista (el ítem que hace más tiempo)
-    const desde = (t) => {
-      const f = t.items.filter((i) => i.estado === 'taller').map((i) => (i.talleres || []).at(-1)?.fecha || t.ingresado_en.slice(0, 10))
-      return f.length ? f.sort()[0] : null
-    }
-    const grupo = (t) => (t.items.some((i) => i.estado === 'taller') ? 0
-      : t.estado === 'esperando_confirmacion' ? 1
-      : t.estado === 'listo_para_facturar' ? 2
-      : t.estado === 'facturado' || t.estado === 'rechazado' ? 3 : 4)
-    visibles.sort((a, b) => grupo(a) - grupo(b)
-      || (grupo(a) === 0 ? desde(a).localeCompare(desde(b)) : 0)
-      || b.ingresado_en.localeCompare(a.ingresado_en))
-  }
+  // Ordenados por número de sobre, de menor a mayor (Facturados: por fecha de factura)
+  if (tab[0] !== 'facturados') visibles.sort(porNumero)
 
   const activos = listas.talleristas.filter((x) => x.activo)
   const marcar = (id, si) => setMarcados((m) => (si ? [...m, id] : m.filter((x) => x !== id)))
@@ -275,13 +263,14 @@ export default function Sobres({ params }) {
   )
 }
 
-// Agrupa los sobres por cliente: cada grupo ordenado por fecha de ingreso (los en taller primero)
+const porNumero = (a, b) => String(a.nro_sobre).localeCompare(String(b.nro_sobre), 'es', { numeric: true })
+
+// Agrupa los sobres por cliente: cada grupo ordenado por número de sobre
 function porCliente(sobres) {
   const g = {}
   sobres.forEach((t) => { (g[t.cliente_id] ||= { id: t.cliente_id, nombre: t.cliente, sobres: [] }).sobres.push(t) })
   const grupos = Object.values(g)
-  const orden = (t) => (t.items.some((i) => i.estado === 'taller') ? 0 : t.estado === 'esperando_confirmacion' ? 1 : t.estado === 'listo_para_facturar' ? 2 : 3)
-  grupos.forEach((x) => x.sobres.sort((a, b) => orden(a) - orden(b) || a.ingresado_en.localeCompare(b.ingresado_en)))
+  grupos.forEach((x) => x.sobres.sort(porNumero))
   return grupos.sort((a, b) => a.nombre.localeCompare(b.nombre))
 }
 
@@ -844,7 +833,7 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
   async function guardarPres() {
     const h = num(pres.hechura), p = pres.metal ? num(pres.peso) : null
     if (Number.isNaN(h) || Number.isNaN(p)) return setMsg('Revisá la hechura y el peso.')
-    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: h === null ? null : pres.moneda, presupuesto_metal: pres.metal || null, presupuesto_peso: p, tallerista_id: tallPend ? Number(tallPend) : null }).eq('id', it.id)
+    const { error } = await sb.from('items').update({ presupuesto_hechura: h, presupuesto_moneda: h === null ? null : pres.moneda, presupuesto_metal: pres.metal || null, presupuesto_peso: p, ...(it.estado === 'pendiente' ? { tallerista_id: tallPend ? Number(tallPend) : null } : {}) }).eq('id', it.id)
     if (error) return setMsg(errorMsg(error))
     recargar(); ctx.cerrarDetalle()
   }
@@ -883,17 +872,19 @@ function ItemDetalle({ it, t, total, ctx, recargar }) {
       </label>
       <button className="btn" onClick={guardarDesc}>Guardar nombre y descripción</button>
 
-      {it.estado === 'pendiente' && (
+      {(it.estado === 'pendiente' || (it.presupuesto_respuesta === 'aceptado' && !['facturado', 'entregado'].includes(t.estado))) && (
         <>
-          <h4 className="sub">Presupuesto</h4>
+          <h4 className="sub">{it.estado === 'pendiente' ? 'Presupuesto' : 'Editar presupuesto aceptado'}</h4>
           <CamposPresupuesto v={pres} set={setPres} />
-          <label>Tallerista (cuando el cliente lo acepte)
-            <select value={tallPend} onChange={(e) => setTallPend(e.target.value)}>
-              <option value="">Sin elegir</option>
-              {ctx.talleristas.filter((x) => x.activo || x.id === it.tallerista_id).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-            </select>
-          </label>
-          <button className="btn" onClick={guardarPres}>Guardar presupuesto y tallerista</button>
+          {it.estado === 'pendiente' && (
+            <label>Tallerista (cuando el cliente lo acepte)
+              <select value={tallPend} onChange={(e) => setTallPend(e.target.value)}>
+                <option value="">Sin elegir</option>
+                {ctx.talleristas.filter((x) => x.activo || x.id === it.tallerista_id).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+              </select>
+            </label>
+          )}
+          <button className="btn" onClick={guardarPres}>{it.estado === 'pendiente' ? 'Guardar presupuesto y tallerista' : 'Guardar presupuesto'}</button>
         </>
       )}
       {msg && <div className="ok">{msg}</div>}
