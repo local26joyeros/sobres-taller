@@ -30,9 +30,10 @@ const HUB = /^sobres-taller/.test(window.location.hostname) ? 'https://local26.v
 function Sistemas() {
   return (
     <nav className="sistemas no-print" aria-label="Sistemas">
-      <a href={HUB + '/'}>Movimientos</a>
-      <a href={HUB + '/sobres/'} className="activo">Sobres</a>
-      <a href={HUB + '/pagos/'}>Vencimientos y pagos</a>
+      <a className="sis-marca" href={HUB + '/'}><i /><span>Local 26</span></a>
+      <a className="sis-tab" href={HUB + '/movimientos'}>Movimientos</a>
+      <a className="sis-tab activo" href={HUB + '/sobres/'}>Sobres</a>
+      <a className="sis-tab" href={HUB + '/pagos/'}>Vencimientos y pagos</a>
     </nav>
   )
 }
@@ -62,7 +63,7 @@ function Entrando({ error, reintentar }) {
       <Sistemas />
       <div className="login">
         <div className="card login-card">
-          <div className="marca grande">Trabajos <span>Local 26</span></div>
+          <div className="marca grande">Sobres</div>
           {error
             ? <><div className="error">{error}</div><button className="btn primario" onClick={reintentar}>Reintentar</button></>
             : <p className="meta">Entrando…</p>}
@@ -109,12 +110,12 @@ export default function App() {
       <Sistemas />
       <header className="barra no-print">
         <button className="hamburguesa" onClick={() => setMenu(true)} aria-label="Abrir menú">☰</button>
-        <div className="marca">Trabajos <span>Local 26</span></div>
+        <div className="marca">Sobres</div>
       </header>
       <div className={'cajon-fondo no-print' + (menu ? ' abierto' : '')} onClick={() => setMenu(false)} />
       <nav className={'cajon no-print' + (menu ? ' abierto' : '')} aria-hidden={!menu}>
         <div className="cajon-cab">
-          <div className="marca">Trabajos <span>Local 26</span></div>
+          <div className="marca">Sobres</div>
           <button className="cerrar-cajon" onClick={() => setMenu(false)} aria-label="Cerrar menú">×</button>
         </div>
         <a href="#/sobres" className={pagina === 'sobres' ? 'activo' : ''} onClick={() => setMenu(false)}>Inicio</a>
