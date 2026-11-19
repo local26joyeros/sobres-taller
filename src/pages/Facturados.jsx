@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useState } from 'react'
-import { sb, METALES, cargarListas, errorMsg, fecha, fechaCorta, gramos, hechura, plata } from '../lib'
+import { sb, METALES, cargarListas, errorMsg, fecha, fechaCorta, gramos, gramosFino, hechura, plata } from '../lib'
 
 const COLS = [['hechuras', 'Hechuras ($)', 'p'], ['dolares', 'Dólares', 'p'], ['oro_fino', 'Oro fino', 'g'], ['granalla', 'Granalla', 'g'], ['platino', 'Platino', 'g'], ['plata_fina', 'Plata fina', 'g']]
-const valor = (tipo, v) => (!v ? '—' : tipo === 'g' ? gramos(v) : plata(v))
+const valor = (tipo, v, k) => (!v ? '—' : k === 'oro_fino' ? gramosFino(v) : tipo === 'g' ? gramos(v) : plata(v))
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 const haceDias = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10)
@@ -144,7 +144,7 @@ export default function Facturados({ params }) {
                       <td>{r.descripcion || '—'}</td>
                       {r.devolucion ? <td colSpan={4} className="d devolucion">Devolución</td> : <>
                         <td className="d">{r.metal === 'oro' ? gramos(r.peso) : '—'}</td>
-                        <td className="d">{r.metal === 'oro' ? gramos(r.peso_fino) : '—'}</td>
+                        <td className="d">{r.metal === 'oro' ? gramosFino(r.peso_fino) : '—'}</td>
                         <td className="d">{r.metal && r.metal !== 'oro' && r.peso_fino != null ? `${gramos(r.peso_fino)} ${METALES[r.metal].toLowerCase()}` : '—'}</td>
                         <td className="d">{hechura(r.hechura, r.moneda)}</td>
                       </>}
@@ -156,7 +156,7 @@ export default function Facturados({ params }) {
                 <tr>
                   <td colSpan={2}>Totales ({nSobres} sobre{nSobres === 1 ? '' : 's'})</td>
                   <td className="d">{gramos(sum((r) => (r.metal === 'oro' ? r.peso : 0)))}</td>
-                  <td className="d">{gramos(sum((r) => (r.metal === 'oro' ? r.peso_fino : 0)))}</td>
+                  <td className="d">{gramosFino(sum((r) => (r.metal === 'oro' ? r.peso_fino : 0)))}</td>
                   <td className="d">
                     {sum((r) => (r.metal === 'plata' ? r.peso_fino : 0)) > 0 && <div>{gramos(sum((r) => (r.metal === 'plata' ? r.peso_fino : 0)))} plata</div>}
                     {sum((r) => (r.metal === 'platino' ? r.peso_fino : 0)) > 0 && <div>{gramos(sum((r) => (r.metal === 'platino' ? r.peso_fino : 0)))} platino</div>}
@@ -180,11 +180,11 @@ export default function Facturados({ params }) {
               <table className="tabla impresion fact">
                 <thead><tr><th></th>{cols.map(([k, t]) => <th key={k} className="d">{t}</th>)}</tr></thead>
                 <tbody>
-                  <tr><td>Lo facturado ahora</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.facturado[k])}</td>)}</tr>
-                  <tr><td>Saldo anterior</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.anterior[k])}</td>)}</tr>
+                  <tr><td>Lo facturado ahora</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.facturado[k], k)}</td>)}</tr>
+                  <tr><td>Saldo anterior</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.anterior[k], k)}</td>)}</tr>
                 </tbody>
                 <tfoot>
-                  <tr><td>Saldo total actualizado</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.actualizado[k])}</td>)}</tr>
+                  <tr><td>Saldo total actualizado</td>{cols.map(([k, , tipo]) => <td key={k} className="d">{valor(tipo, c.actualizado[k], k)}</td>)}</tr>
                 </tfoot>
               </table>
             </div>

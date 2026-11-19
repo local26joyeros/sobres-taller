@@ -65,10 +65,10 @@ h3 { font-size: 1rem; margin: 1.2rem 0 .5rem; }
 .seccion-actual { margin-left: auto; color: var(--suave); font-size: .9rem; }
 
 /* Menú lateral */
-.cajon-fondo { position: fixed; inset: 0; background: #08141673; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; }
+.cajon-fondo { position: fixed; inset: 0; background: #08141673; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 70; }
 .cajon-fondo.abierto { opacity: 1; pointer-events: auto; }
 .cajon {
-  position: fixed; top: 0; bottom: 0; left: 0; width: 270px; max-width: 85vw; z-index: 31;
+  position: fixed; top: 0; bottom: 0; left: 0; width: 270px; max-width: 85vw; z-index: 71;
   background: #15211F; color: #fff; padding: 1rem .8rem;
   display: flex; flex-direction: column; gap: .2rem;
   transform: translateX(-100%); transition: transform .22s ease;
@@ -201,7 +201,7 @@ legend { font-weight: 500; font-size: .9rem; margin-bottom: .4rem; }
 .sobre { border-left-color: var(--c); }
 
 /* Modal */
-.modal-fondo { position: fixed; inset: 0; background: #08141673; display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; z-index: 20; overflow-y: auto; }
+.modal-fondo { position: fixed; inset: 0; background: #08141673; display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; z-index: 60; overflow-y: auto; }
 .modal { width: 100%; max-width: 560px; position: relative; display: flex; flex-direction: column; gap: .7rem; }
 .modal h2 { margin: 0; }
 .cerrar { position: absolute; top: .4rem; right: .6rem; background: none; border: 0; font-size: 1.8rem; cursor: pointer; color: var(--suave); }
@@ -407,7 +407,7 @@ label.falta { color: var(--rojo); }
 
 /* Foto agrandada */
 .foto-grande.clic { cursor: zoom-in; }
-.foto-ampliada { position: fixed; inset: 0; z-index: 50; background: #000000e6; display: flex; align-items: center; justify-content: center; padding: 1rem; cursor: zoom-out; }
+.foto-ampliada { position: fixed; inset: 0; z-index: 80; background: #000000e6; display: flex; align-items: center; justify-content: center; padding: 1rem; cursor: zoom-out; }
 .foto-ampliada img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
 .cerrar-foto { position: absolute; top: .6rem; right: .9rem; background: none; border: 0; color: #fff; font-size: 2.4rem; line-height: 1; cursor: pointer; }
 
@@ -586,3 +586,19 @@ main .factura-cab .meta { color: var(--suave); }
 @media (max-width:560px){.sistemas .sis-marca span{display:none}.sistemas .sis-tab{padding:13px 9px 11px;font-size:14px}}
 @media (prefers-color-scheme:dark){.sistemas{--s-bg:#151F1E;--s-ink:#E4EDEB;--s-muted:#93A4A0;--s-line:#263432;--s-accent:#62BFD1;--s-soft:#16343A}}
 @media print{.sistemas{display:none}}
+
+/* ===== Alerta de 5 días y prórroga ===== */
+:root { --alerta: #C62828; }
+.card.sobre.tile.alerta { box-shadow: 0 0 0 3px #ffffffcc inset, 0 6px 18px #c6282859; }
+.tile-alerta { background: #fff; color: #B71C1C; font-weight: 800; border-radius: 8px; padding: .35rem .6rem; font-size: .9rem; }
+.tile-prorroga { background: #00000026; border-radius: 8px; padding: .3rem .6rem; font-size: .82rem; font-weight: 600; }
+.alerta-detalle { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem; margin: .8rem 0;
+  padding: .75rem .9rem; border-radius: var(--radio); background: var(--hundido); border: 1px solid var(--linea); }
+.alerta-detalle.roja { background: var(--rojo-claro); border-color: var(--rojo); color: var(--rojo); }
+.alerta-detalle .meta { margin-top: .2rem; }
+.prorroga-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }
+.prorroga-form label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--tinta); }
+.prorroga-form input { width: 7rem; }
+.btn.eliminar-rojo { background: var(--rojo); border-color: var(--rojo); color: #fff; }
+.btn.eliminar-rojo:hover:not(:disabled) { filter: brightness(1.1); }
+.btn.eliminar-rojo:disabled { opacity: .45; }

@@ -1,8 +1,43 @@
 {
-  "redirects": [{ "source": "/", "destination": "/sobres/", "permanent": false }],
-  "rewrites": [
-    { "source": "/sobres", "destination": "/index.html" },
-    { "source": "/sobres/", "destination": "/index.html" },
-    { "source": "/sobres/:path*", "destination": "/:path*" }
-  ]
+ "redirects": [
+  {
+   "source": "/",
+   "destination": "/sobres/",
+   "permanent": false
+  }
+ ],
+ "rewrites": [
+  {
+   "source": "/sobres",
+   "destination": "/index.html"
+  },
+  {
+   "source": "/sobres/",
+   "destination": "/index.html"
+  },
+  {
+   "source": "/sobres/:path*",
+   "destination": "/:path*"
+  }
+ ],
+ "headers": [
+  {
+   "source": "/assets/(.*)",
+   "headers": [
+    {
+     "key": "Cache-Control",
+     "value": "public, max-age=31536000, immutable"
+    }
+   ]
+  },
+  {
+   "source": "/sobres/assets/(.*)",
+   "headers": [
+    {
+     "key": "Cache-Control",
+     "value": "public, max-age=31536000, immutable"
+    }
+   ]
+  }
+ ]
 }

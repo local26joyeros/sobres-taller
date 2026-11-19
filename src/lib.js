@@ -29,6 +29,9 @@ const nf2 = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFr
 const nf3 = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
 
 export const plata = (v) => (v === null || v === undefined || v === '' ? '—' : nf2.format(Number(v)))
+const nf1 = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+// Oro fino: siempre con un solo decimal
+export const gramosFino = (v) => (v === null || v === undefined || v === '' ? '—' : nf1.format(Math.round(Number(v) * 10) / 10) + ' g')
 export const gramos = (v) => (v === null || v === undefined || v === '' ? '—' : nf3.format(Number(v)) + ' g')
 export const hechura = (v, m) =>
   v === null || v === undefined ? '—' : (m === 'USD' ? 'US$ ' : '$ ') + nf2.format(Number(v))
@@ -54,7 +57,7 @@ export const num = (s) => {
 export const fino = (metal, peso) => {
   const p = num(peso)
   if (p === null || Number.isNaN(p)) return null
-  return metal === 'oro' ? Math.round(p * 0.825 * 1000) / 1000 : p
+  return metal === 'oro' ? Math.round(p * 0.825 * 10) / 10 : p
 }
 
 export const errorMsg = (e) => {

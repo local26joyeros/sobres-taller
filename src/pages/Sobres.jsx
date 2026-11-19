@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, colorCliente, colorTallerista } from '../lib'
+import { sb, TIPOS, METALES, cargarListas, errorMsg, fecha, fechaCorta, hechura, gramos, num, fotoUrl, ir, estadoTexto, resolverTallerista, colorCliente, colorTallerista, hoyAR } from '../lib'
 import { useTiempoReal } from '../tiempoReal'
 import { subirFotoItem, agregarFotoItem, subirFoto, agregarFoto } from '../foto'
 import { ListaClientes } from './Clientes'
@@ -11,8 +11,6 @@ const PESTANAS = [
   ['taller', 'En taller'],
   ['pendientes', 'Pendientes'],
   ['listos', 'Listos para facturar'],
-  ['entregar', 'Para entregar'],
-  ['entregados', 'Entregados'],
   ['facturados', 'Facturados'],
   ['talleristas', 'Talleristas'],
   ['clientes', 'Clientes'],
@@ -22,8 +20,6 @@ const ESTADOS_SOBRE = {
   taller: ['taller', 'esperando_confirmacion'],
   pendientes: ['taller', 'esperando_confirmacion'],
   listos: ['listo_para_facturar'],
-  entregar: ['facturado', 'rechazado'],
-  entregados: ['entregado'],
   facturados: ['facturado', 'entregado'],
 }
 const ESTADO_ITEM_TAB = { taller: 'taller', pendientes: 'pendiente' }
@@ -32,6 +28,24 @@ const rpc = async (fn, args) => {
   const { error } = await sb.rpc(fn, args)
   if (error) throw error
 }
+// ---------- Alerta: 5 días sin cambios → sobre en rojo para reclamar (salvo prórroga vigente) ----------
+const DIAS_ALERTA = 5
+const fechaAR = (ts) => (ts ? new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }) : null)
+const diasEntre = (desde, hasta) => Math.round((Date.parse(hasta) - Date.parse(desde)) / 864e5)
+export function alertaSobre(t, items = t.items || []) {
+  const hoy = hoyAR()
+  const esperas = []
+  items.filter((i) => i.estado === 'taller').forEach((i) => {
+    esperas.push({ desde: (i.talleres || []).at(-1)?.fecha || fechaAR(t.ingresado_en), quien: i.tallerista || 'el tallerista', taller: true })
+  })
+  if (items.some((i) => i.estado === 'pendiente')) esperas.push({ desde: fechaAR(t.estado_desde || t.ingresado_en), quien: 'el cliente', taller: false })
+  if (!esperas.length) return null
+  const vieja = esperas.sort((a, b) => a.desde.localeCompare(b.desde))[0]
+  const dias = diasEntre(vieja.desde, hoy)
+  const prorroga = t.prorroga_hasta && hoy <= t.prorroga_hasta
+  return { ...vieja, dias, prorroga, roja: dias >= DIAS_ALERTA && !prorroga, talleristas: [...new Set(esperas.filter((e) => e.taller).map((e) => e.quien))] }
+}
+
 const dma = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}` : '')
 const dm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '')
 // "$ 15.000,00 + 2,5 g oro 18k"
@@ -65,7 +79,7 @@ export default function Sobres({ params }) {
     if (!silencioso) setCargando(true)
     let q = sb.from('vista_trabajos').select('*').order(tab[0] === 'facturados' ? 'facturado_en' : 'ingresado_en', { ascending: false })
     if (ESTADOS_SOBRE[tab[0]]) q = q.in('estado', ESTADOS_SOBRE[tab[0]])
-    if (tab[0] === 'entregados' || tab[0] === 'todos' || tab[0] === 'facturados') q = q.limit(300)
+    if (tab[0] === 'todos' || tab[0] === 'facturados') q = q.limit(300)
     const [{ data, error }, { data: itemsActivos }, { data: listos }] = await Promise.all([
       tab[0] === 'talleristas' || tab[0] === 'clientes' ? Promise.resolve({ data: [] }) : q,
       sb.from('items').select('trabajo_id,estado').in('estado', ['taller', 'pendiente']),
@@ -142,6 +156,20 @@ export default function Sobres({ params }) {
     ir('facturacion', { sobres: marcados.join(',') })
   }
 
+  async function eliminarMarcados() {
+    const elegidos = trabajos.filter((x) => marcados.includes(x.id))
+    const nros = elegidos.map((x) => x.nro_sobre).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))
+    if (!(await preguntar(`¿Estás seguro de eliminar ${nros.length === 1 ? 'el sobre ' + nros[0] : 'los sobres ' + nros.join(', ')} con todos sus ítems y fotos? No se puede deshacer.`))) return
+    const ok = await accion(async () => {
+      for (const t of elegidos) {
+        await rpc('eliminar_sobre', { p_trabajo: t.id })
+        const { data: archivos } = await sb.storage.from('fotos').list(String(t.id), { limit: 1000 })
+        if (archivos?.length) await sb.storage.from('fotos').remove(archivos.map((a) => `${t.id}/${a.name}`))
+      }
+    })
+    if (ok !== false) setMarcados([])
+  }
+
   async function devolverMarcados() {
     const tall = await elegirTallerista(`¿A qué tallerista ${marcados.length === 1 ? 'vuelve el sobre elegido' : `vuelven los ${marcados.length} sobres elegidos`}?`)
     if (!tall) return
@@ -184,6 +212,7 @@ export default function Sobres({ params }) {
           </label>
           <button className="btn ok" disabled={!marcados.length} onClick={facturarMarcados}>Facturar</button>
           <button className="btn" disabled={!marcados.length} onClick={devolverMarcados}>Devolver a taller</button>
+          <button className="btn eliminar-rojo" disabled={!marcados.length} onClick={eliminarMarcados}>Eliminar</button>
         </div>
       )}
       {error && <div className="error">{error}</div>}
@@ -407,9 +436,11 @@ function Tarjeta({ t, abrir, marcado, marcar }) {
   const lineas = Object.values(enTaller).sort((a, b) => a.desde.localeCompare(b.desde))
   const pendientes = t.items.filter((i) => i.estado === 'pendiente').length
   const otro = { listo_para_facturar: 'Listo para facturar', facturado: 'Facturado', entregado: 'Entregado', rechazado: 'Rechazado – para devolver' }[t.estado]
+  const alerta = alertaSobre(t)
+  const roja = alerta?.roja
 
   return (
-    <div className={'card sobre tile' + (marcado ? ' marcado' : '')} style={{ '--cliente': colorCliente(t.cliente_id) }} onClick={abrir} role="button" title={t.cliente}>
+    <div className={'card sobre tile' + (marcado ? ' marcado' : '') + (roja ? ' alerta' : '')} style={{ '--cliente': roja ? 'var(--alerta)' : colorCliente(t.cliente_id) }} onClick={abrir} role="button" title={t.cliente}>
       <div className="tile-cab">
         {marcado !== null && marcado !== undefined && (
           <input type="checkbox" className="check-sobre" checked={marcado} onClick={(e) => e.stopPropagation()} onChange={(e) => marcar(e.target.checked)} aria-label={'Elegir sobre ' + t.nro_sobre} />
@@ -426,6 +457,8 @@ function Tarjeta({ t, abrir, marcado, marcar }) {
         {(t.estado === 'facturado' || t.estado === 'entregado') && <span className="estado-tile est-fact">{t.estado === 'entregado' ? 'Entregado' : 'Facturado'}</span>}
       </div>
       <div className="tile-cuerpo">
+        {roja && <div className="tile-alerta">⚠ Reclamar {alerta.taller ? 'al tallerista' : 'respuesta al cliente'} · {alerta.dias} días</div>}
+        {!roja && alerta?.prorroga && <div className="tile-prorroga">Prórroga hasta {dma(t.prorroga_hasta)}</div>}
         {lineas.map((l) => (
           <div key={l.id || 0} className="tile-linea">
             <b>{l.nombre}</b><span>desde {dma(l.desde)}</span>
@@ -639,6 +672,54 @@ function DetalleCargado({ id, t, ctx, recargar, version, cerrar }) {
   } }} recargar={refrescar} cerrar={cerrar} />
 }
 
+// Dentro del sobre: aviso de reclamo y prórroga en días
+function AlertaDetalle({ t, items, ctx }) {
+  const [dias, setDias] = useState('')
+  const [abierto, setAbierto] = useState(false)
+  const alerta = alertaSobre(t, items)
+  if (!alerta) return null
+  const editable = !['facturado', 'entregado'].includes(t.estado)
+  async function guardar(hasta) {
+    const { error } = await sb.from('trabajos').update({ prorroga_hasta: hasta }).eq('id', t.id)
+    if (error) throw error
+  }
+  async function darProrroga() {
+    const n = parseInt(dias, 10)
+    if (!n || n < 1 || n > 365) return
+    const d = new Date(hoyAR() + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n)
+    const hasta = d.toISOString().slice(0, 10)
+    if (!(await ctx.preguntar(`¿Dar ${n} día${n > 1 ? 's' : ''} más de prórroga al sobre ${t.nro_sobre}? Se vuelve a marcar en rojo el ${dma(new Date(Date.parse(hasta) + 864e5).toISOString().slice(0, 10))} si sigue igual.`))) return
+    if (await ctx.accion(() => guardar(hasta))) { setDias(''); setAbierto(false); ctx.cerrarDetalle() }
+  }
+  const quien = alerta.taller ? (alerta.talleristas.join(', ') || 'el tallerista') : 'el cliente'
+  return (
+    <div className={'alerta-detalle' + (alerta.roja ? ' roja' : '')}>
+      <div>
+        {alerta.roja
+          ? <b>⚠ Lleva {alerta.dias} días sin cambios: reclamale a {quien}.</b>
+          : <b>Lleva {alerta.dias} día{alerta.dias === 1 ? '' : 's'} en este estado{alerta.dias < DIAS_ALERTA ? ` (se marca en rojo a los ${DIAS_ALERTA})` : ''}.</b>}
+        {alerta.prorroga && <div className="meta">Prórroga hasta el {dma(t.prorroga_hasta)}. Al día siguiente se vuelve a marcar en rojo.</div>}
+      </div>
+      {editable && (abierto ? (
+        <div className="prorroga-form">
+          <label>Días más
+            <input inputMode="numeric" value={dias} onChange={(e) => setDias(e.target.value.replace(/\D/g, ''))} autoFocus placeholder="Ej.: 3" />
+          </label>
+          <div className="botones-par">
+            <button className="btn ok" onClick={darProrroga} disabled={!parseInt(dias, 10)}>Aceptar</button>
+            <button className="btn suave" onClick={() => setAbierto(false)}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="botones-par">
+          <button className="btn" onClick={() => setAbierto(true)}>{alerta.prorroga ? 'Cambiar prórroga' : 'Dar prórroga'}</button>
+          {alerta.prorroga && <button className="btn suave" onClick={async () => { if (await ctx.preguntar('¿Quitar la prórroga?')) { if (await ctx.accion(() => guardar(null))) ctx.cerrarDetalle() } }}>Quitar prórroga</button>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Detalle({ t, items, ctx, recargar, cerrar }) {
   const cargarFotosSobre = useCallback(async () => {
     const { data } = await sb.from('trabajos').select('foto_path').eq('id', t.id).single()
@@ -725,6 +806,8 @@ function Detalle({ t, items, ctx, recargar, cerrar }) {
             </div>
           </div>
         )}
+
+        <AlertaDetalle t={t} items={items} ctx={ctx} />
 
         {items.filter((i) => i.estado === 'pendiente').length > 1 && (
           <div className="acciones-detalle aceptar-todos">

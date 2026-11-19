@@ -1,4 +1,4 @@
-import { METALES, etiquetaPeso, fino, gramos } from './lib'
+import { METALES, etiquetaPeso, fino, gramos, gramosFino } from './lib'
 
 // Campo de tallerista: se elige de la lista o se escribe un nombre nuevo.
 export function CampoTallerista({ valor, onChange, talleristas, id = 'lista-talleristas', placeholder = 'Nombre del tallerista' }) {
@@ -32,7 +32,7 @@ export function CamposPresupuesto({ v, set }) {
       {v.metal ? (
         <label>{etiquetaPeso(v.metal)}
           <input inputMode="decimal" value={v.peso} onChange={(e) => set({ ...v, peso: e.target.value })} />
-          {v.metal === 'oro' && f != null && !Number.isNaN(f) && <span className="ayuda">Oro fino: {gramos(f)}</span>}
+          {v.metal === 'oro' && f != null && !Number.isNaN(f) && <span className="ayuda">Oro fino: {gramosFino(f)}</span>}
         </label>
       ) : <div />}
     </div>

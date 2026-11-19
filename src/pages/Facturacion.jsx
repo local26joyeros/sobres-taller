@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { sb, METALES, errorMsg, gramos, hechura as fmtHechura, num, fino, ir, colorCliente } from '../lib'
+import { sb, METALES, errorMsg, gramos, gramosFino, hechura as fmtHechura, num, fino, ir, colorCliente } from '../lib'
 import { SelectorMoneda } from '../components'
 
 // Facturación de UN cliente por vez. Cada ítem lleva su hechura, moneda, metal y peso,
@@ -30,7 +30,7 @@ function CamposLinea({ v, set }) {
       <td data-l={v.metal === 'oro' ? 'Peso 18k (g)' : 'Peso fino (g)'}>
         {v.metal ? <input className="num" inputMode="decimal" placeholder={v.metal === 'oro' ? 'g 18k' : 'g fino'} value={v.peso} onChange={(e) => set({ ...v, peso: e.target.value })} /> : <span className="meta">—</span>}
       </td>
-      <td data-l="Fino" className="fino">{v.metal ? gramos(f) : '—'}</td>
+      <td data-l="Fino" className="fino">{v.metal ? (v.metal === 'oro' ? gramosFino(f) : gramos(f)) : '—'}</td>
     </>
   )
 }
@@ -276,7 +276,7 @@ export default function Facturacion({ params }) {
             <div><span>Sobres</span><b>{delCliente.filter((s) => s.sel).length + nuevos.length}</b></div>
             <div><span>Hechura $</span><b>{fmtHechura(totalH('ARS'), 'ARS')}</b></div>
             <div><span>Hechura US$</span><b>{fmtHechura(totalH('USD'), 'USD')}</b></div>
-            <div><span>Oro fino</span><b>{gramos(totalMetal('oro'))}</b></div>
+            <div><span>Oro fino</span><b>{gramosFino(totalMetal('oro'))}</b></div>
             <div><span>Plata fina</span><b>{gramos(totalMetal('plata'))}</b></div>
             <div><span>Platino</span><b>{gramos(totalMetal('platino'))}</b></div>
           </div>
