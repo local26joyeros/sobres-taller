@@ -602,3 +602,44 @@ main .factura-cab .meta { color: var(--suave); }
 .btn.eliminar-rojo { background: var(--rojo); border-color: var(--rojo); color: #fff; }
 .btn.eliminar-rojo:hover:not(:disabled) { filter: brightness(1.1); }
 .btn.eliminar-rojo:disabled { opacity: .45; }
+
+/* ===== Encabezado y menú lateral comunes (misma pieza en Movimientos y Sobres) ===== */
+.ui-barra{--u-bg:#FFFFFF;--u-ink:#15211F;--u-muted:#5A6A67;--u-line:#D5DEDB;--u-accent:#0E5E70;--u-soft:#DCEDF0;--u-hover:#EEF2F1;
+  display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--u-bg);color:var(--u-ink);border-bottom:1px solid var(--u-line);
+  position:relative;z-index:30;font-family:"Figtree","Segoe UI",system-ui,sans-serif;line-height:1.2}
+.ui-barra .ui-titulo{font-family:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--u-ink);text-decoration:none}
+.ui-hamb{display:grid;gap:4px;padding:9px 8px;margin:0;border:0;border-radius:10px;background:transparent;cursor:pointer;align-self:center}
+.ui-hamb span{display:block;width:22px;height:2px;border-radius:2px;background:var(--u-ink)}
+.ui-hamb:hover{background:var(--u-hover)}
+.ui-cajon-fondo{position:fixed;inset:0;background:rgba(8,20,22,.45);opacity:0;pointer-events:none;transition:opacity .2s;z-index:70}
+.ui-cajon-fondo.abierto{opacity:1;pointer-events:auto}
+.ui-cajon{--u-bg:#FFFFFF;--u-ink:#15211F;--u-muted:#5A6A67;--u-line:#D5DEDB;--u-accent:#0E5E70;--u-soft:#DCEDF0;--u-hover:#EEF2F1;
+  position:fixed;top:0;bottom:0;left:0;width:280px;max-width:85vw;z-index:71;background:var(--u-bg);color:var(--u-ink);
+  border-right:1px solid var(--u-line);box-shadow:0 18px 50px rgba(15,40,45,.18);padding:14px 12px calc(14px + env(safe-area-inset-bottom,0px));
+  display:flex;flex-direction:column;gap:2px;transform:translateX(-100%);transition:transform .22s ease;
+  font-family:"Figtree","Segoe UI",system-ui,sans-serif;line-height:1.2;visibility:hidden}
+.ui-cajon.abierto{transform:none;visibility:visible}
+.ui-cajon-cab{display:flex;justify-content:space-between;align-items:center;padding:4px 6px 14px;margin-bottom:6px;border-bottom:1px solid var(--u-line)}
+.ui-cajon-cab b{font-family:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;font-size:19px;font-weight:700;letter-spacing:-.01em}
+.ui-cajon-cerrar{border:0;background:transparent;color:var(--u-muted);font-size:26px;font-weight:400;min-height:0;line-height:1;padding:2px 8px;border-radius:8px;cursor:pointer}
+.ui-cajon-cerrar:hover{background:var(--u-hover);color:var(--u-ink)}
+.ui-cajon a,.ui-cajon .ui-salir{display:block;width:100%;text-align:left;font:inherit;font-weight:600;font-size:15px;color:var(--u-ink);
+  text-decoration:none;padding:12px 12px;border:0;border-radius:10px;background:transparent;cursor:pointer;transition:background .12s,color .12s}
+.ui-cajon a:hover,.ui-cajon .ui-salir:hover{background:var(--u-hover)}
+.ui-cajon a.activo{background:var(--u-soft);color:var(--u-accent)}
+.ui-cajon .ui-salir{margin-top:auto;color:var(--u-muted);border-top:1px solid var(--u-line);border-radius:0 0 10px 10px;padding-top:14px}
+@media (prefers-color-scheme:dark){
+  .ui-barra,.ui-cajon{--u-bg:#151F1E;--u-ink:#E4EDEB;--u-muted:#93A4A0;--u-line:#263432;--u-accent:#62BFD1;--u-soft:#16343A;--u-hover:#1B2726}
+}
+@media print{.ui-barra,.ui-cajon,.ui-cajon-fondo{display:none!important}}
+
+/* ===== Base común con Vencimientos y pagos: títulos, etiquetas, campos y botones ===== */
+h1 { font-size: clamp(1.6rem, 4.5vw, 2.1rem); }
+label { font-size: .82rem; font-weight: 600; color: var(--suave); }
+label.opcion, .todos-check, .check-sobre-fact, .nro-nuevo { color: var(--tinta); }
+input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; border-color: var(--linea); background: var(--fondo); }
+input:not([type=checkbox]):not([type=radio]), select { min-height: 42px; }
+.btn { min-height: 42px; padding: .6rem 1rem; transition: filter .15s, border-color .15s; }
+.btn:hover:not(:disabled) { border-color: var(--oro); }
+.btn.primario:hover, .btn.ok:hover { filter: brightness(1.08); }
+.btn.ok { border-radius: 10px; }

@@ -108,21 +108,21 @@ export default function App() {
   return (
     <div className="app">
       <Sistemas />
-      <header className="barra no-print">
-        <button className="hamburguesa" onClick={() => setMenu(true)} aria-label="Abrir menú">☰</button>
-        <div className="marca">Sobres</div>
+      <header className="ui-barra no-print">
+        <button className="ui-hamb" onClick={() => setMenu(true)} aria-label="Abrir menú" aria-expanded={menu}><span /><span /><span /></button>
+        <a href="#/sobres" className="ui-titulo">Sobres</a>
       </header>
-      <div className={'cajon-fondo no-print' + (menu ? ' abierto' : '')} onClick={() => setMenu(false)} />
-      <nav className={'cajon no-print' + (menu ? ' abierto' : '')} aria-hidden={!menu}>
-        <div className="cajon-cab">
-          <div className="marca">Sobres</div>
-          <button className="cerrar-cajon" onClick={() => setMenu(false)} aria-label="Cerrar menú">×</button>
+      <div className={'ui-cajon-fondo no-print' + (menu ? ' abierto' : '')} onClick={() => setMenu(false)} />
+      <nav className={'ui-cajon no-print' + (menu ? ' abierto' : '')} aria-hidden={!menu}>
+        <div className="ui-cajon-cab">
+          <b>Sobres</b>
+          <button className="ui-cajon-cerrar" onClick={() => setMenu(false)} aria-label="Cerrar menú">×</button>
         </div>
-        <a href="#/sobres" className={pagina === 'sobres' ? 'activo' : ''} onClick={() => setMenu(false)}>Inicio</a>
+        <a href="#/sobres" className={pagina === 'sobres' && !params.get('tab') ? 'activo' : ''} onClick={() => setMenu(false)}>Inicio de Sobres</a>
         {PAGINAS.map(([k, t]) => (
-          <a key={k} href={'#/' + k + (k === 'sobres' ? '?tab=todos' : '')} className={pagina === k && k !== 'sobres' ? 'activo' : ''} onClick={() => setMenu(false)}>{t}</a>
+          <a key={k} href={'#/' + k + (k === 'sobres' ? '?tab=todos' : '')} className={pagina === k && (k !== 'sobres' || params.get('tab') === 'todos') ? 'activo' : ''} onClick={() => setMenu(false)}>{t}</a>
         ))}
-        <button className="salir" onClick={salir}>Salir</button>
+        <button className="ui-salir" onClick={salir}>Salir</button>
       </nav>
       <main>
         {pagina !== 'sobres' && (
